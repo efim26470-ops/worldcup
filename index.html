@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071522">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Неофициальный live-центр чемпионата мира по футболу 2026: расписание, результаты, таблицы, статистика и игроки.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="World Cup 26">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./assets/icons/favicon-16.png">
+  <link rel="stylesheet" href="./styles.css?v=20260617-final">
+  <title>World Cup 26 — Live Center</title>
+  <script src="./config.js?v=20260617-final" defer></script>
+  <script src="./demo-data.js?v=20260617-final" defer></script>
+  <script src="./app.js?v=20260617-final" defer></script>
+</head>
+<body>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+  <div class="ambient ambient-c" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar glass" aria-label="Основная навигация">
+      <a class="brand" href="#today" aria-label="World Cup 26">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><path d="m24 13 7 5-3 8h-8l-3-8 7-5Z"/><path d="m17 25-7 4m21-4 7 4M19 39l1-13m9 13-1-13M11 20l6-2m20 2-6-2"/></svg>
+        </span>
+        <span><strong>World Cup 26</strong><small>Live Center</small></span>
+      </a>
+
+      <nav id="desktopNav" class="nav-list"></nav>
+
+      <div class="sidebar-footer">
+        <button id="themeButton" class="surface-button theme-button" type="button">
+          <span id="themeIcon" aria-hidden="true"></span>
+          <span><strong>Тема</strong><small id="themeLabel">Системная</small></span>
+        </button>
+        <div class="connection-mini">
+          <span id="connectionDot" class="status-dot"></span>
+          <span id="connectionMiniText">Подключение…</span>
+        </div>
+        <small id="buildLabel" class="build-label"></small>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar glass">
+        <div>
+          <div class="eyebrow">FIFA World Cup 2026</div>
+          <div id="currentClock" class="current-clock"></div>
+        </div>
+        <div class="topbar-actions">
+          <button id="installButton" class="icon-button hidden" type="button" title="Установить приложение" aria-label="Установить приложение"></button>
+          <button id="refreshButton" class="primary-button" type="button"><span id="refreshIcon"></span><span>Обновить</span></button>
+        </div>
+      </header>
+
+      <section class="hero glass">
+        <div class="hero-content">
+          <div class="eyebrow accent">Неофициальный Apple-style центр</div>
+          <h1>ЧМ‑2026<br>в реальном времени</h1>
+          <p>Расписание, live-счёт, таблицы групп, события, составы, личные встречи, голы, ассисты и оценки игроков.</p>
+          <div id="connectionBanner" class="connection-banner" role="status" aria-live="polite"></div>
+        </div>
+        <div class="hero-ball" aria-hidden="true">
+          <svg viewBox="0 0 160 160"><circle cx="80" cy="80" r="58"/><path d="m80 46 22 16-8 26H66l-8-26 22-16Zm-22 42-25 11m69-11 25 11M64 132l2-44m30 44-2-44M38 58l20 4m64-4-20 4"/></svg>
+        </div>
+      </section>
+
+      <section id="summaryCards" class="summary-grid" aria-label="Краткая статистика"></section>
+
+      <section class="content-grid">
+        <div id="mainPanel" class="panel glass" aria-live="polite"></div>
+        <aside id="sidePanel" class="panel glass side-panel"></aside>
+      </section>
+    </main>
+  </div>
+
+  <nav id="mobileNav" class="mobile-nav glass" aria-label="Мобильная навигация"></nav>
+
+  <div id="matchModal" class="modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <article class="modal-sheet glass" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header">
+        <div>
+          <div class="eyebrow">Match Center</div>
+          <h2 id="modalTitle">Матч</h2>
+        </div>
+        <button class="icon-button" id="closeModalButton" type="button" aria-label="Закрыть"></button>
+      </header>
+      <div id="modalContent"></div>
+    </article>
+  </div>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  <noscript><div class="noscript">Для работы live-центра необходимо включить JavaScript.</div></noscript>
+</body>
+</html>
