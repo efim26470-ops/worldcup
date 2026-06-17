@@ -19,6 +19,15 @@
     possession: 'Владение мячом', shots: 'Удары', shotsOnTarget: 'Удары в створ',
     corners: 'Угловые', fouls: 'Фолы', passes: 'Передачи'
   };
+  const VERIFIED_CURRENT_CLUBS = new Map(Object.entries({
+    'lionel messi': 'Inter Miami CF', 'erling haaland': 'Manchester City', 'erling braut haaland': 'Manchester City',
+    'raphinha': 'FC Barcelona', 'raphael dias belloli': 'FC Barcelona', 'kylian mbappe': 'Real Madrid',
+    'vinicius junior': 'Real Madrid', 'vinicius jr': 'Real Madrid', 'lamine yamal': 'FC Barcelona',
+    'cristiano ronaldo': 'Al-Nassr', 'julian alvarez': 'Atlético de Madrid', 'jude bellingham': 'Real Madrid',
+    'harry kane': 'Bayern Munich', 'jamal musiala': 'Bayern Munich', 'bukayo saka': 'Arsenal',
+    'pedri': 'FC Barcelona', 'gavi': 'FC Barcelona', 'achraf hakimi': 'Paris Saint-Germain',
+    'ousmane dembele': 'Paris Saint-Germain', 'lautaro martinez': 'Inter Milan'
+  }));
 
   const parsedHash = parseHash();
   const state = {
@@ -46,11 +55,15 @@
     playerProfile: null,
     playerSeed: null,
     playerLoading: false,
+    playerStatsLoading: false,
     playerTab: 'overview',
     playerHistorySeason: 2026,
     playerHistory: new Map(),
     playerHistoryLoading: false,
-    changedMatchIds: new Set()
+    changedMatchIds: new Set(),
+    leadersLoading: false,
+    leadersLoaded: false,
+    teamPhotosLoading: new Set()
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -73,9 +86,50 @@
     return Number.isFinite(number) ? number : null;
   }
 
+
+  function normalizeHeightText(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    const text = String(value).trim().toLowerCase().replace(',', '.');
+    const feet = text.match(/(\d+)\s*['′]\s*(\d+)?/);
+    if (feet) return `${Math.round((Number(feet[1]) * 12 + Number(feet[2] || 0)) * 2.54)} см`;
+    const number = Number((text.match(/-?\d+(?:\.\d+)?/) || [])[0]);
+    if (!Number.isFinite(number)) return '—';
+    let cm = null;
+    if (/mm|миллимет/.test(text)) cm = number / 10;
+    else if (/inch|in\b|дюйм/.test(text)) cm = number * 2.54;
+    else if (/\bm\b|meter|метр/.test(text) && number < 10) cm = number * 100;
+    else if (/cm|см|centimeter/.test(text)) cm = number;
+    else if (number >= 1.35 && number <= 2.3) cm = number * 100;
+    else if (number >= 135 && number <= 230) cm = number;
+    else if (number >= 1350 && number <= 2300) cm = number / 10;
+    return cm && cm >= 135 && cm <= 230 ? `${Math.round(cm)} см` : '—';
+  }
+
+  function normalizeWeightText(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    const text = String(value).trim().toLowerCase().replace(',', '.');
+    const number = Number((text.match(/-?\d+(?:\.\d+)?/) || [])[0]);
+    if (!Number.isFinite(number)) return '—';
+    let kg = null;
+    if (/lb|lbs|pound|фунт/.test(text)) kg = number * 0.453592;
+    else if (/gram|\bg\b|грам/.test(text) && number > 1000) kg = number / 1000;
+    else if (number >= 45 && number <= 180) kg = number;
+    else if (number >= 45000 && number <= 180000) kg = number / 1000;
+    return kg && kg >= 45 && kg <= 180 ? `${Math.round(kg)} кг` : '—';
+  }
+
   function slug(value) {
     return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-|-$/g, '');
+  }
+
+  function verifiedClubForName(name) {
+    const key = slug(name).replace(/-/g, ' ');
+    if (VERIFIED_CURRENT_CLUBS.has(key)) return VERIFIED_CURRENT_CLUBS.get(key);
+    for (const [knownName, club] of VERIFIED_CURRENT_CLUBS) {
+      if (key.includes(knownName) || knownName.includes(key)) return club;
+    }
+    return '';
   }
 
   function teamKey(team) {
@@ -236,8 +290,8 @@
       starter: Boolean(player.starter),
       nationality: player.nationality || player.player?.nationality || '',
       birth: player.birth || player.player?.birth || null,
-      height: player.height || player.player?.height || '',
-      weight: player.weight || player.player?.weight || '',
+      height: normalizeHeightText(player.height || player.player?.height || ''),
+      weight: normalizeWeightText(player.weight || player.player?.weight || ''),
       value: type === 'ratings' ? Number(rawValue || 0).toFixed(2) : safeNumber(rawValue, 0),
       label: player.label || (type === 'assists' ? 'ассистов' : type === 'ratings' ? 'рейтинг' : 'голов')
     };
@@ -318,11 +372,11 @@
   function playerPhotoCandidates(player) {
     const result = [];
     for (const candidate of (player?.photoCandidates || [])) {
-      if (candidate) result.push(mediaProxy(candidate), candidate);
+      if (candidate) result.push(candidate, mediaProxy(candidate));
     }
     const addRemote = (url) => {
       if (!url) return;
-      result.push(mediaProxy(url), url);
+      result.push(url, mediaProxy(url));
     };
     const photo = player?.photo || '';
     addRemote(photo);
@@ -345,7 +399,7 @@
 
   function avatarMarkup(player, compact = false, large = false) {
     const classes = ['player-avatar', compact ? 'compact' : '', large ? 'large' : ''].filter(Boolean).join(' ');
-    return `<span class="${classes}"><span>${escapeHtml(initials(player?.name))}</span><img class="media-fallback" alt="${escapeHtml(player?.name || 'Игрок')}" data-media-candidates="${encodedCandidates(playerPhotoCandidates(player))}" data-player-name="${escapeHtml(player?.name || '')}" data-player-team="${escapeHtml(player?.team || player?.nationality || '')}" data-player-espn-id="${escapeHtml(player?.espnId || '')}" data-player-api-id="${escapeHtml(player?.apiId || '')}"></span>`;
+    return `<span class="${classes}"><span>${escapeHtml(initials(player?.name))}</span><img class="media-fallback" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="${escapeHtml(player?.name || 'Игрок')}" data-media-candidates="${encodedCandidates(playerPhotoCandidates(player))}"></span>`;
   }
 
 
@@ -381,48 +435,24 @@
       try { candidates = JSON.parse(decodeURIComponent(img.dataset.mediaCandidates || '[]')); } catch { candidates = []; }
       candidates = [...new Set(candidates.filter(Boolean))];
       let index = 0;
-      let enriching = false;
-      const enrich = async () => {
-        const name = img.dataset.playerName || '';
-        if (!name || img.dataset.mediaEnriched === '1' || enriching) return false;
-        enriching = true;
-        img.dataset.mediaEnriched = '1';
-        img.closest('.player-avatar')?.classList.add('media-loading');
-        try {
-          const url = new URL(`${CONFIG.apiBase}/api/player/media`);
-          url.searchParams.set('name', name);
-          if (img.dataset.playerTeam) url.searchParams.set('team', img.dataset.playerTeam);
-          if (img.dataset.playerEspnId) url.searchParams.set('espnId', img.dataset.playerEspnId);
-          if (img.dataset.playerApiId) url.searchParams.set('apiId', img.dataset.playerApiId);
-          url.searchParams.set('v', CONFIG.build);
-          const payload = await fetchJson(url.toString(), 22000);
-          const remote = [payload.photo, ...(payload.photoCandidates || [])].filter(Boolean);
-          const expanded = remote.flatMap(item => [mediaProxy(item), item]);
-          const before = candidates.length;
-          candidates.push(...expanded.filter(item => item && !candidates.includes(item)));
-          return candidates.length > before;
-        } catch { return false; }
-        finally { enriching = false; img.closest('.player-avatar')?.classList.remove('media-loading'); }
-      };
-      const next = async () => {
-        while (index < candidates.length && !candidates[index]) index += 1;
+      const holder = img.closest('.player-avatar, .flag-frame, .mini-flag-wrap, .club-logo');
+      const next = () => {
         if (index >= candidates.length) {
-          const added = await enrich();
-          if (added) return next();
           img.hidden = true;
-          img.closest('.player-avatar, .flag-frame, .mini-flag-wrap')?.classList.add('fallback-only');
+          holder?.classList.add('fallback-only');
+          holder?.classList.remove('media-loading');
           return;
         }
         img.hidden = false;
+        holder?.classList.add('media-loading');
         img.src = candidates[index++];
       };
-      img.addEventListener('error', () => { void next(); });
+      img.addEventListener('error', next);
       img.addEventListener('load', () => {
-        const holder = img.closest('.player-avatar, .flag-frame, .mini-flag-wrap');
         holder?.classList.add('image-loaded');
-        holder?.classList.remove('fallback-only');
+        holder?.classList.remove('fallback-only', 'media-loading');
       });
-      void next();
+      next();
     });
   }
 
@@ -654,10 +684,12 @@
 
   function renderPlayers() {
     const leaders = state.snapshot.leaders;
+    const loading = state.leadersLoading && !state.leadersLoaded;
+    const loadingBlock = '<div class="leader-loading"><span class="loader"></span><span>Уточняю авторов голов и ассистов…</span></div>';
     $('#mainPanel').innerHTML = `
       <div class="panel-header reveal"><div><div class="eyebrow accent">Player hub</div><h2>Игроки</h2><div class="panel-subtitle">Голы, ассисты и фотографии футболистов</div></div></div>
-      <div class="leader-section"><h3 class="section-heading">Бомбардиры</h3>${playerRows(leaders.scorers.slice(0, 20), 'голов')}</div>
-      <div class="leader-section"><h3 class="section-heading">Ассистенты</h3>${playerRows(leaders.assists.slice(0, 20), 'ассистов')}</div>
+      <div class="leader-section"><h3 class="section-heading">Бомбардиры</h3>${loading && !leaders.scorers.length ? loadingBlock : playerRows(leaders.scorers.slice(0, 20), 'голов')}</div>
+      <div class="leader-section"><h3 class="section-heading">Ассистенты</h3>${loading && !leaders.assists.length ? loadingBlock : playerRows(leaders.assists.slice(0, 20), 'ассистов')}</div>
       ${leaders.ratings.length ? `<div class="leader-section"><h3 class="section-heading">Лучшие оценки</h3>${playerRows(leaders.ratings.slice(0, 20), 'рейтинг')}</div>` : ''}
     `;
   }
@@ -928,6 +960,23 @@
     }
   }
 
+  async function loadLeaders() {
+    if (!state.snapshot || state.leadersLoading) return;
+    state.leadersLoading = true;
+    if (state.route === 'players') render();
+    try {
+      const payload = await fetchJson(`${CONFIG.apiBase}/api/leaders?v=${encodeURIComponent(CONFIG.build)}`, 12000);
+      const normalized = normalizeSnapshot({ matches: state.snapshot.matches, standings: state.snapshot.standings, leaders: payload });
+      state.snapshot.leaders = normalized.leaders;
+      state.leadersLoaded = true;
+      saveSnapshot(state.snapshot);
+    } catch { /* quick snapshot leaders remain available */ }
+    finally {
+      state.leadersLoading = false;
+      if (state.route === 'players' || state.route === 'today') render();
+    }
+  }
+
   async function loadSnapshot({ manual = false } = {}) {
     if (state.refreshing) return;
     state.refreshing = true;
@@ -944,6 +993,7 @@
       state.error = '';
       detectMatchChanges(previous, snapshot);
       saveSnapshot(snapshot);
+      void loadLeaders();
       if (manual) showToast('Данные обновлены');
     } catch (error) {
       state.error = error.name === 'AbortError' ? 'timeout' : String(error.message || 'network');
@@ -981,9 +1031,11 @@
     if (state.teamDetails.has(key) || state.teamLoading.has(key)) return;
     const cache = loadTeamCache();
     const cached = cache[key];
-    if (cached && Date.now() - safeNumber(cached.cachedAt) < 7 * 86400000) {
-      state.teamDetails.set(key, normalizeTeamDetails(cached.data, team));
+    if (cached && Date.now() - safeNumber(cached.cachedAt) < 12 * 60 * 60 * 1000) {
+      const details = normalizeTeamDetails(cached.data, team);
+      state.teamDetails.set(key, details);
       render();
+      void ensureTeamPhotos(team, details);
       return;
     }
     state.teamLoading.add(key);
@@ -993,11 +1045,12 @@
       url.searchParams.set('id', team.id || '');
       url.searchParams.set('code', team.countryCode || '');
       url.searchParams.set('v', CONFIG.build);
-      const raw = await fetchJson(url.toString(), 30000);
+      const raw = await fetchJson(url.toString(), 12000);
       const details = normalizeTeamDetails(raw, team);
       state.teamDetails.set(key, details);
       cache[key] = { cachedAt: Date.now(), data: raw };
       saveTeamCache(cache);
+      void ensureTeamPhotos(team, details);
     } catch {
       state.teamDetails.set(key, normalizeTeamDetails({ team, squad: [] }, team));
       showToast('Состав этой сборной пока недоступен. Расписание и статистика сохранены.');
@@ -1005,6 +1058,33 @@
       state.teamLoading.delete(key);
       if (state.route === 'team' && state.teamKey === key) render();
     }
+  }
+
+  async function ensureTeamPhotos(team, details = state.teamDetails.get(teamKey(team))) {
+    const key = teamKey(team);
+    if (!details?.squad?.length || state.teamPhotosLoading.has(key)) return;
+    state.teamPhotosLoading.add(key);
+    try {
+      const url = new URL(`${CONFIG.apiBase}/api/team/photos`);
+      url.searchParams.set('name', team.name || '');
+      url.searchParams.set('id', team.id || '');
+      url.searchParams.set('code', team.countryCode || '');
+      url.searchParams.set('v', CONFIG.build);
+      const payload = await fetchJson(url.toString(), 12000);
+      const byName = new Map((payload.photos || []).map(row => [slug(row.name), row]));
+      let changed = false;
+      details.squad = details.squad.map(player => {
+        const media = byName.get(slug(player.name));
+        if (!media) return player;
+        changed = true;
+        return normalizePlayer({ ...player, photo: media.photo || player.photo, photoCandidates: [media.photo, ...(media.photoCandidates || []), player.photo, ...(player.photoCandidates || [])].filter(Boolean) });
+      });
+      if (changed) {
+        state.teamDetails.set(key, details);
+        if (state.route === 'team' && state.teamKey === key) render();
+      }
+    } catch { /* photo enrichment is optional */ }
+    finally { state.teamPhotosLoading.delete(key); }
   }
 
   function renderModalScoreboard(match) {
@@ -1121,7 +1201,8 @@
 
   function renderPlayerHero(profile) {
     const player = normalizePlayer({ ...state.playerSeed, ...(profile?.player || {}), photoCandidates: profile?.player?.photoCandidates || state.playerSeed?.photoCandidates || [] });
-    const club = profile?.currentClub || {};
+    const verifiedClubName = verifiedClubForName(player.name);
+    const club = verifiedClubName ? { ...(profile?.currentClub || {}), name: verifiedClubName } : (profile?.currentClub || {});
     const status = profile?.status || (club.name ? 'Действующий игрок' : 'Статус клуба уточняется');
     const clubLogo = club.logo ? `<span class="club-logo"><img class="media-fallback" alt="" data-media-candidates="${encodedCandidates([mediaProxy(club.logo), club.logo])}"></span>` : '<span class="club-logo fallback-club">FC</span>';
     return `<section class="player-profile-hero">
@@ -1129,17 +1210,16 @@
       <div class="player-profile-copy"><div class="eyebrow accent">Профиль футболиста</div><h2>${escapeHtml(player.name)}</h2><div class="player-meta-line"><span>${escapeHtml(formatPlayerPosition(player.pos || profile?.position))}</span>${player.number ? `<span>№ ${escapeHtml(player.number)}</span>` : ''}${profile?.player?.age ? `<span>${escapeHtml(profile.player.age)} лет</span>` : ''}</div>
         <div class="current-club-card">${clubLogo}<div><small>Текущий клуб / статус</small><strong>${escapeHtml(club.name || status)}</strong><span>${club.name && status ? escapeHtml(status) : ''}</span></div></div>
       </div>
-      <div class="player-bio-grid"><span><small>Гражданство</small><strong>${escapeHtml(profile?.player?.nationality || player.nationality || player.team || '—')}</strong></span><span><small>Дата рождения</small><strong>${escapeHtml(profile?.player?.birth?.date || player.birth?.date || '—')}</strong></span><span><small>Рост</small><strong>${escapeHtml(profile?.player?.height || player.height || '—')}</strong></span><span><small>Вес</small><strong>${escapeHtml(profile?.player?.weight || player.weight || '—')}</strong></span></div>
+      <div class="player-bio-grid"><span><small>Гражданство</small><strong>${escapeHtml(profile?.player?.nationality || player.nationality || player.team || '—')}</strong></span><span><small>Дата рождения</small><strong>${escapeHtml(profile?.player?.birth?.date || player.birth?.date || '—')}</strong></span><span><small>Рост</small><strong>${escapeHtml(normalizeHeightText(profile?.player?.height || player.height))}</strong></span><span><small>Вес</small><strong>${escapeHtml(normalizeWeightText(profile?.player?.weight || player.weight))}</strong></span></div>
     </section>`;
   }
 
   function renderPlayerOverview(profile) {
     const total = profile?.nationalCareer || {};
     const wc = profile?.worldCup2026 || {};
-    const sources = (profile?.sources || []).join(' · ');
     const biography = profile?.biography ? `<div class="player-biography"><h4>О футболисте</h4><p>${escapeHtml(profile.biography)}</p></div>` : '';
     const links = (profile?.externalLinks || []).filter(item => /^https:\/\//.test(item.url || ''));
-    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Карьера в сборной</div><h3>Главные показатели</h3></div>${sources ? `<span class="data-quality-badge">${escapeHtml(sources)}</span>` : ''}</div>
+    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Карьера в сборной</div><h3>Главные показатели</h3></div></div>
       <div class="player-stat-grid">${statCard('Матчи', total.appearances)}${statCard('Минуты на ЧМ‑2026', total.minutes)}${statCard('Голы', total.goals)}${statCard('Ассисты на ЧМ‑2026', total.assists)}${statCard('Средняя оценка', total.rating)}${statCard('Турниры', total.tournaments)}</div>
       <div class="profile-callout"><span class="profile-callout-icon">${icon('trophy')}</span><div><strong>ЧМ‑2026</strong><span>${metricValue(wc.appearances)} матчей · ${metricValue(wc.goals)} голов · ${metricValue(wc.assists)} ассистов${wc.cleanSheets !== null && wc.cleanSheets !== undefined ? ` · ${metricValue(wc.cleanSheets)} сухих матчей` : ''}</span></div></div>
       ${biography}
@@ -1160,7 +1240,7 @@
     if (goalkeeper) cards.splice(5, 0, ['Сейвы', stats.saves], ['Пропущено', stats.conceded], ['Сухие матчи', stats.cleanSheets]);
     return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">FIFA World Cup 2026</div><h3>Статистика на турнире</h3></div>${goalkeeper ? '<span class="position-pill">Вратарь</span>' : ''}</div>
       <div class="player-stat-grid extended">${cards.map(([label, value]) => statCard(label, value)).join('')}</div>
-      ${!safeNumber(stats.appearances) ? '<div class="empty compact"><strong>На турнире пока нет сыгранных минут</strong><span>Показатели появятся после выхода игрока на поле.</span></div>' : ''}
+      ${state.playerStatsLoading ? '<div class="profile-data-loading"><span class="loader mini-loader"></span><span>Уточняем расширенную статистику в фоне…</span></div>' : (!safeNumber(stats.appearances) ? '<div class="empty compact"><strong>На турнире пока нет подтверждённых минут</strong><span>Показатели обновятся после публикации протоколов.</span></div>' : '')}
     </div>`;
   }
 
@@ -1221,6 +1301,14 @@
     modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
   }
 
+  function loadPlayerCache() {
+    try { return JSON.parse(localStorage.getItem(CONFIG.playerCacheStorageKey) || '{}'); } catch { return {}; }
+  }
+
+  function savePlayerCache(cache) {
+    try { localStorage.setItem(CONFIG.playerCacheStorageKey, JSON.stringify(cache)); } catch { /* ignore */ }
+  }
+
   async function openPlayer(seed) {
     state.playerSeed = normalizePlayer(seed || {});
     state.playerProfile = null;
@@ -1228,7 +1316,15 @@
     state.playerTab = 'overview';
     state.playerHistorySeason = 2026;
     state.playerHistory = new Map();
+    const cacheKey = slug(`${state.playerSeed.name}-${state.playerSeed.team}`);
+    const cache = loadPlayerCache();
+    const cached = cache[cacheKey];
+    if (cached && Date.now() - safeNumber(cached.cachedAt) < 24 * 60 * 60 * 1000) {
+      state.playerProfile = cached.data;
+      state.playerLoading = false;
+    }
     renderPlayerModal();
+    if (state.playerProfile) void ensurePlayerStats(cacheKey, cache);
     try {
       const url = new URL(`${CONFIG.apiBase}/api/player`);
       url.searchParams.set('id', state.playerSeed.id || '');
@@ -1238,13 +1334,53 @@
       url.searchParams.set('team', state.playerSeed.team || '');
       url.searchParams.set('country', state.playerSeed.nationality || state.playerSeed.team || '');
       url.searchParams.set('v', CONFIG.build);
-      state.playerProfile = await fetchJson(url.toString(), 35000);
+      const fresh = await fetchJson(url.toString(), 8000);
+      state.playerProfile = fresh;
+      cache[cacheKey] = { cachedAt: Date.now(), data: fresh };
+      savePlayerCache(cache);
+      void ensurePlayerStats(cacheKey, cache);
     } catch {
-      state.playerProfile = { player: state.playerSeed, currentClub: null, status: 'Подробные данные временно недоступны', worldCup2026: {}, nationalCareer: {}, trophies: [], individualAwards: [] };
-      showToast('Часть данных профиля временно недоступна.');
+      if (!state.playerProfile) state.playerProfile = { player: state.playerSeed, currentClub: null, status: 'Подробные данные временно недоступны', worldCup2026: {}, nationalCareer: {}, trophies: [], individualAwards: [] };
     } finally {
       state.playerLoading = false;
       renderPlayerModal();
+    }
+  }
+
+  async function ensurePlayerStats(cacheKey, cache) {
+    if (!state.playerProfile || state.playerStatsLoading || !state.playerSeed) return;
+    const current = state.playerProfile.worldCup2026 || {};
+    const hasUsefulStats = safeNumber(current.appearances) > 0 || safeNumber(current.goals) > 0 || safeNumber(current.assists) > 0;
+    if (hasUsefulStats && !state.playerProfile.statsPending) return;
+    state.playerStatsLoading = true;
+    try {
+      const player = state.playerProfile.player || state.playerSeed;
+      const url = new URL(`${CONFIG.apiBase}/api/player/stats`);
+      url.searchParams.set('id', player.id || '');
+      url.searchParams.set('apiId', player.apiId || '');
+      url.searchParams.set('espnId', player.espnId || '');
+      url.searchParams.set('name', player.name || state.playerSeed.name || '');
+      url.searchParams.set('team', state.playerSeed.team || player.nationality || '');
+      url.searchParams.set('country', player.nationality || state.playerSeed.team || '');
+      url.searchParams.set('v', CONFIG.build);
+      const payload = await fetchJson(url.toString(), 9000);
+      if (payload?.worldCup2026) {
+        state.playerProfile.worldCup2026 = payload.worldCup2026;
+        state.playerProfile.national2026 = payload.worldCup2026;
+        state.playerProfile.nationalCareer = {
+          ...(state.playerProfile.nationalCareer || {}),
+          minutes: payload.worldCup2026.minutes ?? state.playerProfile.nationalCareer?.minutes,
+          assists: payload.worldCup2026.assists ?? state.playerProfile.nationalCareer?.assists,
+          rating: payload.worldCup2026.rating ?? state.playerProfile.nationalCareer?.rating
+        };
+        state.playerProfile.statsPending = false;
+        cache[cacheKey] = { cachedAt: Date.now(), data: state.playerProfile };
+        savePlayerCache(cache);
+      }
+    } catch { /* profile remains usable without deep metrics */ }
+    finally {
+      state.playerStatsLoading = false;
+      if ($('#playerModal')?.classList.contains('open')) renderPlayerModal();
     }
   }
 
@@ -1260,7 +1396,7 @@
       url.searchParams.set('season', season);
       url.searchParams.set('country', state.playerProfile.player.nationality || state.playerSeed?.team || '');
       url.searchParams.set('v', CONFIG.build);
-      state.playerHistory.set(season, await fetchJson(url.toString(), 30000));
+      state.playerHistory.set(season, await fetchJson(url.toString(), 12000));
     } catch {
       state.playerHistory.set(season, { season, tournaments: [] });
     } finally {
@@ -1482,7 +1618,9 @@
     initializeUi(); applyTheme(); updateNotificationUi();
     state.snapshot = loadCachedSnapshot();
     if (state.snapshot) { state.sourceMode = 'cache'; state.loading = false; }
-    render(); registerServiceWorker(); await loadSnapshot();
+    render(); registerServiceWorker();
+    if (state.snapshot) void loadLeaders();
+    await loadSnapshot();
   }
 
   start();

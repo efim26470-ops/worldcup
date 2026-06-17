@@ -1,23 +1,25 @@
-WORLD CUP 26 — OMNI v5.1
+WORLD CUP 2026 — LEAN v6.1
 
-ЗАГРУЗКА НА GITHUB PAGES
-1. Удали старые файлы сайта из корня репозитория worldcup.
-2. Загрузи ВСЁ содержимое этой папки в корень репозитория. Саму папку GITHUB-UPLOAD загружать не нужно.
-3. В корне обязательно должны лежать index.html, app.js, styles.css, config.js, manifest.webmanifest и service-worker.js.
-4. Папка assets обязательна: в ней находятся локальные флаги и PWA-иконки.
-5. Сначала обнови Cloudflare Worker кодом из соседней папки CLOUDFLARE-WORKER.
-6. После публикации открой:
-   https://efim26470-ops.github.io/worldcup/?omni=51
-7. Нажми Ctrl+F5. Если показывается старая версия: F12 → Application → Service Workers → Unregister, затем Storage → Clear site data.
+Загрузите ВСЁ содержимое этой папки в корень GitHub-репозитория worldcup.
+Файл index.html должен находиться непосредственно в корне репозитория.
 
-УСТАНОВКА НА WINDOWS
-Открой опубликованный сайт в Microsoft Edge или Google Chrome и нажми «Установить приложение». После установки World Cup 26 появится в меню «Пуск» и запускается в отдельном окне.
+Состав:
+- index.html
+- styles.css
+- app.js
+- config.js
+- demo-data.js
+- manifest.webmanifest
+- service-worker.js
+- .nojekyll
+- assets/flags — 48 локальных флагов
+- assets/icons — PWA-иконки Windows, Android и iPhone
 
-ИСТОЧНИКИ ДАННЫХ
-• ESPN — расписание, счёт и доступные данные матчей.
-• Wikidata/Wikipedia/Wikimedia Commons — профили, биографии, фотографии, участия и идентификаторы.
-• TheSportsDB — фотографии, составы, сведения об игроках, доступная статистика и награды.
-• API-Football — необязательное дополнение, когда известен точный ID и доступен лимит.
-• Transfermarkt — только ссылка на профиль по открытому идентификатору Wikidata; сайт его не скрапит.
+После загрузки:
+1. Подождите публикацию GitHub Pages.
+2. Откройте https://efim26470-ops.github.io/worldcup/?lean=61
+3. Нажмите Ctrl+F5.
+4. Если сохранилась старая версия: F12 → Application → Service Workers → Unregister,
+   затем Storage → Clear site data.
 
-Если источник не публикует конкретный показатель, интерфейс показывает «—», а не выдуманный ноль.
+Важно: сначала обновите Cloudflare Worker из отдельной папки CLOUDFLARE-WORKER.

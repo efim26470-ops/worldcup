@@ -1,4 +1,4 @@
-const CACHE = 'wc26-omni-shell-v5-1';
+const CACHE = 'wc26-lean-shell-v61';
 const SHELL = [
   './', './index.html', './styles.css', './config.js', './demo-data.js', './app.js',
   './manifest.webmanifest', './assets/icons/apple-touch-icon.png', './assets/icons/favicon-16.png',
