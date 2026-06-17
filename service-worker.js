@@ -1,4 +1,4 @@
-const CACHE = 'wc26-pro-shell-v2';
+const CACHE = 'wc26-pro-shell-v4-player-profiles';
 const SHELL = [
   './', './index.html', './styles.css', './config.js', './demo-data.js', './app.js',
   './manifest.webmanifest', './assets/icons/apple-touch-icon.png', './assets/icons/favicon-16.png',

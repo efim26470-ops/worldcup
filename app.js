@@ -43,6 +43,13 @@
     deferredInstall: null,
     teamDetails: new Map(),
     teamLoading: new Set(),
+    playerProfile: null,
+    playerSeed: null,
+    playerLoading: false,
+    playerTab: 'overview',
+    playerHistorySeason: 2026,
+    playerHistory: new Map(),
+    playerHistoryLoading: false,
     changedMatchIds: new Set()
   };
 
@@ -225,6 +232,10 @@
       age: player.age ?? player.player?.age ?? null,
       rating: player.rating || '',
       starter: Boolean(player.starter),
+      nationality: player.nationality || player.player?.nationality || '',
+      birth: player.birth || player.player?.birth || null,
+      height: player.height || player.player?.height || '',
+      weight: player.weight || player.player?.weight || '',
       value: type === 'ratings' ? Number(rawValue || 0).toFixed(2) : safeNumber(rawValue, 0),
       label: player.label || (type === 'assists' ? 'ассистов' : type === 'ratings' ? 'рейтинг' : 'голов')
     };
@@ -259,7 +270,11 @@
       formation: raw.formation || '',
       fifaRank: raw.fifaRank || null,
       source: raw.source || '',
-      squad: (raw.squad || raw.players || []).map(player => normalizePlayer(player)),
+      squad: (raw.squad || raw.players || []).map(player => normalizePlayer({
+        ...player,
+        team: player.team || raw.team?.name || fallbackTeam?.name || 'Сборная',
+        countryCode: player.countryCode || raw.team?.countryCode || fallbackTeam?.countryCode || ''
+      })),
       updatedAt: raw.updatedAt || new Date().toISOString()
     };
   }
@@ -300,23 +315,25 @@
 
   function playerPhotoCandidates(player) {
     const result = [];
+    const addRemote = (url) => {
+      if (!url) return;
+      result.push(mediaProxy(url), url);
+    };
     const photo = player?.photo || '';
-    if (photo) result.push(photo, mediaProxy(photo));
+    addRemote(photo);
     const apiId = String(player?.apiId || '');
     const espnId = String(player?.espnId || '');
     const id = String(player?.id || '');
     if (/^\d+$/.test(apiId)) {
-      const url = `https://media.api-sports.io/football/players/${apiId}.png`;
-      result.push(url, mediaProxy(url));
+      addRemote(`https://media.api-sports.io/football/players/${apiId}.png`);
     }
     if (/^\d+$/.test(espnId)) {
-      const url = `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`;
-      result.push(url, mediaProxy(url));
+      addRemote(`https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`);
+      addRemote(`https://a.espncdn.com/i/headshots/soccer/players/large/${espnId}.png`);
     }
-    if (!photo && !apiId && /^\d+$/.test(id)) {
-      const apiUrl = `https://media.api-sports.io/football/players/${id}.png`;
-      const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${id}.png`;
-      result.push(apiUrl, mediaProxy(apiUrl), espnUrl, mediaProxy(espnUrl));
+    if (!apiId && !espnId && /^\d+$/.test(id)) {
+      addRemote(`https://media.api-sports.io/football/players/${id}.png`);
+      addRemote(`https://a.espncdn.com/i/headshots/soccer/players/full/${id}.png`);
     }
     return [...new Set(result.filter(Boolean))];
   }
@@ -324,6 +341,31 @@
   function avatarMarkup(player, compact = false, large = false) {
     const classes = ['player-avatar', compact ? 'compact' : '', large ? 'large' : ''].filter(Boolean).join(' ');
     return `<span class="${classes}"><span>${escapeHtml(initials(player?.name))}</span><img class="media-fallback" alt="${escapeHtml(player?.name || 'Игрок')}" data-media-candidates="${encodedCandidates(playerPhotoCandidates(player))}"></span>`;
+  }
+
+
+  function playerData(player) {
+    const safe = normalizePlayer(player || {});
+    const payload = {
+      id: safe.id, apiId: safe.apiId, espnId: safe.espnId, name: safe.name,
+      team: safe.team, countryCode: safe.countryCode, photo: safe.photo,
+      number: safe.number, pos: safe.pos, age: safe.age, nationality: safe.nationality
+    };
+    return escapeHtml(encodeURIComponent(JSON.stringify(payload)));
+  }
+
+  function metricValue(value, fallback = '—') {
+    if (value === null || value === undefined || value === '') return fallback;
+    return escapeHtml(value);
+  }
+
+  function pluralMatches(value) {
+    const number = safeNumber(value);
+    const mod10 = number % 10;
+    const mod100 = number % 100;
+    if (mod10 === 1 && mod100 !== 11) return 'матч';
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'матча';
+    return 'матчей';
   }
 
   function bindMediaFallbacks(root = document) {
@@ -572,7 +614,7 @@
 
   function playerRows(players, valueLabel) {
     if (!players.length) return '<div class="empty compact"><strong>Статистика появится после матчей</strong></div>';
-    return `<div class="leader-list stagger-list">${players.map((player, index) => `<article class="player-row reveal"><span class="rank-number">${index + 1}</span>${avatarMarkup(player)}<div class="player-copy"><div class="player-name">${escapeHtml(player.name)}</div><button class="player-team team-inline" type="button" data-open-team="${escapeHtml(teamKey({ name: player.team, countryCode: player.countryCode }))}">${flagMarkup({ countryCode: player.countryCode, name: player.team, short: '' }, true)}<span>${escapeHtml(player.team)}</span></button></div><div class="player-value">${escapeHtml(player.value)}<small>${escapeHtml(player.label || valueLabel)}</small></div></article>`).join('')}</div>`;
+    return `<div class="leader-list stagger-list">${players.map((player, index) => `<article class="player-row reveal interactive-player" data-open-player="${playerData(player)}" tabindex="0" role="button" aria-label="Открыть профиль ${escapeHtml(player.name)}"><span class="rank-number">${index + 1}</span>${avatarMarkup(player)}<div class="player-copy"><div class="player-name">${escapeHtml(player.name)}</div><button class="player-team team-inline" type="button" data-open-team="${escapeHtml(teamKey({ name: player.team, countryCode: player.countryCode }))}">${flagMarkup({ countryCode: player.countryCode, name: player.team, short: '' }, true)}<span>${escapeHtml(player.team)}</span></button></div><div class="player-value">${escapeHtml(player.value)}<small>${escapeHtml(player.label || valueLabel)}</small></div></article>`).join('')}</div>`;
   }
 
   function renderPlayers() {
@@ -652,7 +694,7 @@
       if (!groups.has(position)) groups.set(position, []);
       groups.get(position).push(player);
     });
-    return [...groups.entries()].map(([position, players]) => `<div class="position-group"><h4>${position}</h4><div class="squad-grid stagger-list">${players.map(player => `<article class="squad-card reveal">${avatarMarkup(player, false, true)}<div><strong>${player.number ? `${escapeHtml(player.number)} · ` : ''}${escapeHtml(player.name)}</strong><span>${escapeHtml(player.pos || position)}${player.age ? ` · ${escapeHtml(player.age)} лет` : ''}</span></div>${player.rating ? `<b class="rating-badge">${escapeHtml(player.rating)}</b>` : ''}</article>`).join('')}</div></div>`).join('');
+    return [...groups.entries()].map(([position, players]) => `<div class="position-group"><h4>${position}</h4><div class="squad-grid stagger-list">${players.map(player => `<button class="squad-card reveal interactive-player" type="button" data-open-player="${playerData(player)}" aria-label="Профиль ${escapeHtml(player.name)}">${avatarMarkup(player, false, true)}<div><strong>${player.number ? `${escapeHtml(player.number)} · ` : ''}${escapeHtml(player.name)}</strong><span>${escapeHtml(player.pos || position)}${player.age ? ` · ${escapeHtml(player.age)} лет` : ''}</span></div>${player.rating ? `<b class="rating-badge">${escapeHtml(player.rating)}</b>` : ''}<span class="squad-card-arrow">${icon('arrow', 'tiny-icon')}</span></button>`).join('')}</div></div>`).join('');
   }
 
   function renderTeamPage() {
@@ -733,12 +775,21 @@
   function bindDynamicEvents() {
     $$('[data-route]').forEach(button => button.addEventListener('click', () => setRoute(button.dataset.route)));
     $$('[data-open-match]').forEach(button => button.addEventListener('click', () => openMatch(button.dataset.openMatch)));
+    $$('[data-open-player]').forEach(element => {
+      const action = () => {
+        let seed = {};
+        try { seed = JSON.parse(decodeURIComponent(element.dataset.openPlayer || '')); } catch { seed = {}; }
+        openPlayer(seed);
+      };
+      element.addEventListener('click', event => { if (event.target.closest('[data-open-team]')) return; action(); });
+      element.addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('[data-open-team]')) { event.preventDefault(); action(); } });
+    });
     $$('[data-open-team]').forEach(element => {
       const action = () => {
         const team = findTeam(element.dataset.openTeam);
         if (team) openTeam(team);
       };
-      element.addEventListener('click', action);
+      element.addEventListener('click', event => { event.stopPropagation(); action(); });
       if (element.tagName === 'TR') element.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') action(); });
     });
     $$('[data-favorite-match]').forEach(button => button.addEventListener('click', event => {
@@ -906,6 +957,7 @@
       url.searchParams.set('name', team.name);
       url.searchParams.set('id', team.id || '');
       url.searchParams.set('code', team.countryCode || '');
+      url.searchParams.set('v', CONFIG.build);
       const raw = await fetchJson(url.toString(), 30000);
       const details = normalizeTeamDetails(raw, team);
       state.teamDetails.set(key, details);
@@ -940,7 +992,18 @@
   function renderEvents(match) {
     const events = match.events || [];
     if (!events.length) return '<div class="empty compact"><strong>События появятся после начала матча</strong></div>';
-    return `<div class="event-list">${events.map(event => `<div class="event-row"><span class="event-minute">${escapeHtml(event.minute ?? event.time ?? '')}′</span><span class="event-icon">${escapeHtml(event.icon || '•')}</span><span>${escapeHtml(event.text || event.type || '')}</span></div>`).join('')}</div>`;
+    return `<div class="event-list">${events.map(event => {
+      const playerName = String(event.playerName || '').trim();
+      let text = String(event.text || event.type || '').trim();
+      if (/^Гол\s*[—-]\s*(игрок|player)$/i.test(text)) text = playerName ? `Гол — ${playerName}` : 'Гол';
+      if (!text) text = event.scoringPlay ? (playerName ? `Гол — ${playerName}` : 'Гол') : 'Событие';
+      const player = normalizePlayer({
+        id: event.playerId || '', apiId: event.apiId || '', espnId: event.espnId || event.playerId || '',
+        name: playerName || 'Игрок', photo: event.photo || ''
+      });
+      const side = event.team === 'away' ? ' away' : ' home';
+      return `<div class="event-row${side}${playerName ? ' interactive-player' : ''}"${playerName ? ` data-open-player="${playerData({ ...player, team: event.teamName || '' })}" tabindex="0" role="button"` : ''}><span class="event-minute">${escapeHtml(event.minute ?? event.time ?? '')}′</span><span class="event-icon">${escapeHtml(event.icon || '•')}</span>${playerName || event.photo ? avatarMarkup(player, true) : '<span class="event-avatar-placeholder"></span>'}<span class="event-copy"><strong>${escapeHtml(text)}</strong>${event.teamName ? `<small>${escapeHtml(event.teamName)}</small>` : ''}</span></div>`;
+    }).join('')}</div>`;
   }
 
   function renderStats(match) {
@@ -957,7 +1020,7 @@
 
   function lineupPlayerMarkup(player) {
     const normalized = normalizePlayer(player);
-    return `<div class="lineup-player">${avatarMarkup(normalized, true)}<div><div class="player-name">${normalized.number ? `${escapeHtml(normalized.number)} · ` : ''}${escapeHtml(normalized.name)}</div><div class="player-team">${escapeHtml(normalized.pos || (normalized.starter ? 'Старт' : 'Запас'))}</div></div>${normalized.rating ? `<span class="rating-badge">${escapeHtml(normalized.rating)}</span>` : ''}</div>`;
+    return `<div class="lineup-player interactive-player" data-open-player="${playerData(normalized)}" tabindex="0" role="button">${avatarMarkup(normalized, true)}<div><div class="player-name">${normalized.number ? `${escapeHtml(normalized.number)} · ` : ''}${escapeHtml(normalized.name)}</div><div class="player-team">${escapeHtml(normalized.pos || (normalized.starter ? 'Старт' : 'Запас'))}</div></div>${normalized.rating ? `<span class="rating-badge">${escapeHtml(normalized.rating)}</span>` : ''}${icon('arrow', 'tiny-icon lineup-arrow')}</div>`;
   }
 
   function renderLineups(match) {
@@ -981,7 +1044,12 @@
     else body = renderModalOverview(match);
     $('#modalContent').innerHTML = `${renderModalScoreboard(match)}<div class="modal-tabs">${tabs.map(([id, label]) => `<button class="modal-tab${state.modalTab === id ? ' active' : ''}" type="button" data-modal-tab="${id}">${label}</button>`).join('')}</div>${body}`;
     $$('[data-modal-tab]').forEach(button => button.addEventListener('click', () => { state.modalTab = button.dataset.modalTab; renderModal(); bindMediaFallbacks($('#modalContent')); }));
-    $$('[data-open-team]', $('#modalContent')).forEach(button => button.addEventListener('click', () => { closeMatchModal(); const team = findTeam(button.dataset.openTeam); if (team) openTeam(team); }));
+    $$('[data-open-team]', $('#modalContent')).forEach(button => button.addEventListener('click', event => { event.stopPropagation(); closeMatchModal(); const team = findTeam(button.dataset.openTeam); if (team) openTeam(team); }));
+    $$('[data-open-player]', $('#modalContent')).forEach(element => {
+      const action = () => { let seed = {}; try { seed = JSON.parse(decodeURIComponent(element.dataset.openPlayer || '')); } catch { seed = {}; } closeMatchModal(); openPlayer(seed); };
+      element.addEventListener('click', event => { if (event.target.closest('[data-open-team]')) return; action(); });
+      element.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); action(); } });
+    });
     bindMediaFallbacks($('#modalContent'));
     modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
   }
@@ -991,7 +1059,7 @@
     if (!base) return;
     state.modalMatch = base; state.modalTab = 'overview'; state.modalLoading = true; renderModal();
     try {
-      const payload = await fetchJson(`${CONFIG.apiBase}/api/match?id=${encodeURIComponent(id)}`);
+      const payload = await fetchJson(`${CONFIG.apiBase}/api/match?id=${encodeURIComponent(id)}&v=${encodeURIComponent(CONFIG.build)}`);
       if (payload.match) state.modalMatch = normalizeMatch(payload.match);
     } catch { showToast('Подробные данные матча пока недоступны.'); }
     finally { state.modalLoading = false; renderModal(); }
@@ -1000,6 +1068,166 @@
   function closeMatchModal() {
     $('#matchModal').classList.remove('open'); $('#matchModal').setAttribute('aria-hidden', 'true');
     if (!state.notificationModalOpen) document.body.style.overflow = '';
+  }
+
+
+  function statCard(label, value, hint = '') {
+    return `<div class="player-stat-card"><strong>${metricValue(value)}</strong><span>${escapeHtml(label)}</span>${hint ? `<small>${escapeHtml(hint)}</small>` : ''}</div>`;
+  }
+
+  function formatPlayerPosition(position) {
+    const value = String(position || '').toUpperCase();
+    if (/GK|GOAL/.test(value)) return 'Вратарь';
+    if (/DF|DEF/.test(value)) return 'Защитник';
+    if (/MF|MID/.test(value)) return 'Полузащитник';
+    if (/FW|ATT|FOR/.test(value)) return 'Нападающий';
+    return position || 'Футболист';
+  }
+
+  function renderPlayerHero(profile) {
+    const player = normalizePlayer({ ...state.playerSeed, ...(profile?.player || {}) });
+    const club = profile?.currentClub || {};
+    const status = profile?.status || (club.name ? 'Действующий игрок' : 'Статус клуба уточняется');
+    const clubLogo = club.logo ? `<span class="club-logo"><img class="media-fallback" alt="" data-media-candidates="${encodedCandidates([mediaProxy(club.logo), club.logo])}"></span>` : '<span class="club-logo fallback-club">FC</span>';
+    return `<section class="player-profile-hero">
+      <div class="player-profile-photo">${avatarMarkup(player, false, true)}</div>
+      <div class="player-profile-copy"><div class="eyebrow accent">Профиль футболиста</div><h2>${escapeHtml(player.name)}</h2><div class="player-meta-line"><span>${escapeHtml(formatPlayerPosition(player.pos || profile?.position))}</span>${player.number ? `<span>№ ${escapeHtml(player.number)}</span>` : ''}${profile?.player?.age ? `<span>${escapeHtml(profile.player.age)} лет</span>` : ''}</div>
+        <div class="current-club-card">${clubLogo}<div><small>Текущий клуб / статус</small><strong>${escapeHtml(club.name || status)}</strong><span>${club.name && status ? escapeHtml(status) : ''}</span></div></div>
+      </div>
+      <div class="player-bio-grid"><span><small>Гражданство</small><strong>${escapeHtml(profile?.player?.nationality || player.nationality || player.team || '—')}</strong></span><span><small>Дата рождения</small><strong>${escapeHtml(profile?.player?.birth?.date || player.birth?.date || '—')}</strong></span><span><small>Рост</small><strong>${escapeHtml(profile?.player?.height || player.height || '—')}</strong></span><span><small>Вес</small><strong>${escapeHtml(profile?.player?.weight || player.weight || '—')}</strong></span></div>
+    </section>`;
+  }
+
+  function renderPlayerOverview(profile) {
+    const total = profile?.nationalCareer || {};
+    const wc = profile?.worldCup2026 || {};
+    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Сборная · сезон 2026</div><h3>Главные показатели</h3></div><span class="data-quality-badge">Обновляется по API</span></div>
+      <div class="player-stat-grid">${statCard('Матчи', total.appearances)}${statCard('Минуты', total.minutes)}${statCard('Голы', total.goals)}${statCard('Ассисты', total.assists)}${statCard('Средняя оценка', total.rating)}${statCard('Турниры', total.tournaments)}</div>
+      <div class="profile-callout"><span class="profile-callout-icon">${icon('trophy')}</span><div><strong>ЧМ‑2026</strong><span>${safeNumber(wc.appearances)} ${pluralMatches(wc.appearances)}, ${safeNumber(wc.goals)} голов, ${safeNumber(wc.assists)} ассистов${wc.cleanSheets !== null && wc.cleanSheets !== undefined ? ` · ${safeNumber(wc.cleanSheets)} сухих матчей` : ''}</span></div></div>
+    </div>`;
+  }
+
+  function renderWorldCupPlayerStats(profile) {
+    const stats = profile?.worldCup2026 || {};
+    const goalkeeper = Boolean(stats.isGoalkeeper);
+    const cards = [
+      ['Матчи', stats.appearances], ['В старте', stats.lineups], ['Минуты', stats.minutes],
+      ['Голы', stats.goals], ['Ассисты', stats.assists], ['Удары', stats.shots],
+      ['Удары в створ', stats.shotsOnTarget], ['Точные передачи', stats.passes], ['Ключевые передачи', stats.keyPasses],
+      ['Отборы', stats.tackles], ['Перехваты', stats.interceptions], ['Успешные обводки', stats.dribbles],
+      ['Жёлтые карточки', stats.yellowCards], ['Красные карточки', stats.redCards], ['Оценка', stats.rating]
+    ];
+    if (goalkeeper) cards.splice(5, 0, ['Сейвы', stats.saves], ['Пропущено', stats.conceded], ['Сухие матчи', stats.cleanSheets]);
+    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">FIFA World Cup 2026</div><h3>Статистика на турнире</h3></div>${goalkeeper ? '<span class="position-pill">Вратарь</span>' : ''}</div>
+      <div class="player-stat-grid extended">${cards.map(([label, value]) => statCard(label, value)).join('')}</div>
+      ${!safeNumber(stats.appearances) ? '<div class="empty compact"><strong>На турнире пока нет сыгранных минут</strong><span>Показатели появятся после выхода игрока на поле.</span></div>' : ''}
+    </div>`;
+  }
+
+  function renderHistory(profile) {
+    const years = Array.from({ length: 17 }, (_, index) => 2026 - index);
+    const history = state.playerHistory.get(state.playerHistorySeason);
+    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Сборная по сезонам</div><h3>Турниры и показатели</h3></div><label class="history-year-select">Сезон<select id="playerHistoryYear">${years.map(year => `<option value="${year}"${year === state.playerHistorySeason ? ' selected' : ''}>${year}</option>`).join('')}</select></label></div>
+      ${state.playerHistoryLoading ? '<div class="state-box compact-state"><span class="loader"></span><p>Загружаю сезон…</p></div>' : history ? renderHistoryRows(history) : '<div class="empty compact"><strong>Выбери сезон</strong><span>Статистика загрузится по запросу и сохранится в кэше.</span></div>'}
+    </div>`;
+  }
+
+  function renderHistoryRows(history) {
+    const tournaments = history?.tournaments || [];
+    if (!tournaments.length) return '<div class="empty compact"><strong>Выступления за сборную не найдены</strong><span>В бесплатном тарифе часть старых сезонов может быть недоступна.</span></div>';
+    return `<div class="history-timeline">${tournaments.map(item => `<article class="history-card"><div class="history-season-mark">${escapeHtml(history.season)}</div><div class="history-card-main"><strong>${escapeHtml(item.competition || 'Турнир')}</strong><span>${escapeHtml(item.team || profileTeamName())}</span></div><div class="history-mini-stats"><span><b>${safeNumber(item.appearances)}</b> матчей</span><span><b>${safeNumber(item.goals)}</b> голов</span><span><b>${safeNumber(item.assists)}</b> ассистов</span><span><b>${metricValue(item.rating)}</b> оценка</span></div></article>`).join('')}</div>`;
+  }
+
+  function profileTeamName() {
+    return state.playerProfile?.player?.nationality || state.playerSeed?.team || 'Сборная';
+  }
+
+  function trophyIcon(place = '') {
+    const lower = String(place).toLowerCase();
+    if (/winner|champion|1st|gold|побед/.test(lower)) return '🏆';
+    if (/runner|2nd|silver|финал/.test(lower)) return '🥈';
+    if (/3rd|bronze|third/.test(lower)) return '🥉';
+    return '🏅';
+  }
+
+  function renderTrophyShelf(profile) {
+    const teamTrophies = profile?.trophies || [];
+    const awards = profile?.individualAwards || [];
+    if (!teamTrophies.length && !awards.length) return '<div class="empty"><strong>Международные награды пока не найдены</strong><span>Клубные трофеи намеренно не учитываются.</span></div>';
+    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Витрина достижений</div><h3>Трофеи со сборной</h3></div><span class="data-quality-badge">Без клубных наград</span></div>
+      ${teamTrophies.length ? `<div class="trophy-shelf">${teamTrophies.map(item => `<article class="trophy-card"><span class="trophy-emoji">${trophyIcon(item.place)}</span><div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.season || '')}</span><small>${escapeHtml(item.place || 'Участник')}</small></div></article>`).join('')}</div>` : '<div class="empty compact"><strong>Командных трофеев не найдено</strong></div>'}
+      <div class="profile-section-heading secondary-heading"><div><div class="eyebrow">Личные достижения</div><h3>Награды на турнирах сборных</h3></div></div>
+      ${awards.length ? `<div class="individual-awards">${awards.map(item => `<article><span>★</span><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.tournament)} · ${escapeHtml(item.year)}</small></div></article>`).join('')}</div>` : '<div class="empty compact"><strong>Индивидуальные международные награды не найдены</strong></div>'}
+    </div>`;
+  }
+
+  function renderPlayerModal() {
+    const modal = $('#playerModal');
+    if (!modal || !state.playerSeed) return;
+    const profile = state.playerProfile;
+    $('#playerModalTitle').textContent = state.playerSeed.name || profile?.player?.name || 'Футболист';
+    const tabs = [['overview', 'Обзор'], ['worldcup', 'ЧМ‑2026'], ['history', 'Сборная по годам'], ['trophies', 'Трофеи']];
+    let body = '';
+    if (state.playerLoading) body = '<div class="player-profile-loading"><div class="profile-skeleton-photo skeleton"></div><div class="profile-skeleton-lines"><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div></div>';
+    else if (!profile) body = '<div class="empty"><strong>Подробный профиль пока недоступен</strong><span>Базовая карточка игрока сохранена, попробуй обновить позже.</span></div>';
+    else if (state.playerTab === 'worldcup') body = renderWorldCupPlayerStats(profile);
+    else if (state.playerTab === 'history') body = renderHistory(profile);
+    else if (state.playerTab === 'trophies') body = renderTrophyShelf(profile);
+    else body = renderPlayerOverview(profile);
+    $('#playerModalContent').innerHTML = `${renderPlayerHero(profile)}<div class="modal-tabs player-tabs">${tabs.map(([id, label]) => `<button class="modal-tab${state.playerTab === id ? ' active' : ''}" type="button" data-player-tab="${id}">${label}</button>`).join('')}</div>${body}`;
+    $$('[data-player-tab]', $('#playerModalContent')).forEach(button => button.addEventListener('click', async () => { state.playerTab = button.dataset.playerTab; renderPlayerModal(); if (state.playerTab === 'history') await ensurePlayerHistory(state.playerHistorySeason); }));
+    $('#playerHistoryYear')?.addEventListener('change', async event => { state.playerHistorySeason = Number(event.target.value) || 2026; await ensurePlayerHistory(state.playerHistorySeason); });
+    bindMediaFallbacks($('#playerModalContent'));
+    modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
+  }
+
+  async function openPlayer(seed) {
+    state.playerSeed = normalizePlayer(seed || {});
+    state.playerProfile = null;
+    state.playerLoading = true;
+    state.playerTab = 'overview';
+    state.playerHistorySeason = 2026;
+    state.playerHistory = new Map();
+    renderPlayerModal();
+    try {
+      const url = new URL(`${CONFIG.apiBase}/api/player`);
+      url.searchParams.set('id', state.playerSeed.apiId || '');
+      url.searchParams.set('name', state.playerSeed.name || '');
+      url.searchParams.set('team', state.playerSeed.team || '');
+      url.searchParams.set('country', state.playerSeed.nationality || state.playerSeed.team || '');
+      url.searchParams.set('v', CONFIG.build);
+      state.playerProfile = await fetchJson(url.toString(), 35000);
+    } catch {
+      state.playerProfile = { player: state.playerSeed, currentClub: null, status: 'Подробные данные временно недоступны', worldCup2026: {}, nationalCareer: {}, trophies: [], individualAwards: [] };
+      showToast('Часть данных профиля временно недоступна.');
+    } finally {
+      state.playerLoading = false;
+      renderPlayerModal();
+    }
+  }
+
+  async function ensurePlayerHistory(season) {
+    if (!state.playerProfile?.player?.id || state.playerHistory.has(season) || state.playerHistoryLoading) { renderPlayerModal(); return; }
+    state.playerHistoryLoading = true; renderPlayerModal();
+    try {
+      const url = new URL(`${CONFIG.apiBase}/api/player/history`);
+      url.searchParams.set('id', state.playerProfile.player.id);
+      url.searchParams.set('season', season);
+      url.searchParams.set('country', state.playerProfile.player.nationality || state.playerSeed?.team || '');
+      url.searchParams.set('v', CONFIG.build);
+      state.playerHistory.set(season, await fetchJson(url.toString(), 30000));
+    } catch {
+      state.playerHistory.set(season, { season, tournaments: [] });
+    } finally {
+      state.playerHistoryLoading = false; renderPlayerModal();
+    }
+  }
+
+  function closePlayerModal() {
+    $('#playerModal')?.classList.remove('open');
+    $('#playerModal')?.setAttribute('aria-hidden', 'true');
+    state.playerSeed = null; state.playerProfile = null; state.playerLoading = false;
+    if (!state.notificationModalOpen && !$('#matchModal').classList.contains('open')) document.body.style.overflow = '';
   }
 
   function notificationPermissionLabel() {
@@ -1120,6 +1348,7 @@
     $('#refreshIcon').innerHTML = icon('refresh');
     $('#closeModalButton').innerHTML = icon('close');
     $('#closeNotificationButton').innerHTML = icon('close');
+    $('#closePlayerModalButton').innerHTML = icon('close');
     $('#installButton').innerHTML = icon('install');
     $('#refreshButton').addEventListener('click', () => loadSnapshot({ manual: true }));
     $('#themeButton').addEventListener('click', cycleTheme);
@@ -1128,9 +1357,11 @@
     $('#installButton').addEventListener('click', installPwa);
     $('#closeModalButton').addEventListener('click', closeMatchModal);
     $('#closeNotificationButton').addEventListener('click', closeNotificationModal);
+    $('#closePlayerModalButton').addEventListener('click', closePlayerModal);
     $$('[data-close-match-modal]').forEach(element => element.addEventListener('click', closeMatchModal));
     $$('[data-close-notification-modal]').forEach(element => element.addEventListener('click', closeNotificationModal));
-    window.addEventListener('keydown', event => { if (event.key === 'Escape') { closeMatchModal(); closeNotificationModal(); } });
+    $$('[data-close-player-modal]').forEach(element => element.addEventListener('click', closePlayerModal));
+    window.addEventListener('keydown', event => { if (event.key === 'Escape') { closeMatchModal(); closeNotificationModal(); closePlayerModal(); } });
     window.addEventListener('hashchange', () => { const parsed = parseHash(); state.route = parsed.route; state.teamKey = parsed.teamKey; render(); });
     window.addEventListener('online', () => loadSnapshot());
     window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); state.deferredInstall = event; $('#installButton').classList.remove('hidden'); });

@@ -13,11 +13,11 @@
   <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./assets/icons/favicon-16.png">
-  <link rel="stylesheet" href="./styles.css?v=20260617-pro2">
+  <link rel="stylesheet" href="./styles.css?v=20260617-player4">
   <title>World Cup 26 — Live Center</title>
-  <script src="./config.js?v=20260617-pro2" defer></script>
-  <script src="./demo-data.js?v=20260617-pro2" defer></script>
-  <script src="./app.js?v=20260617-pro2" defer></script>
+  <script src="./config.js?v=20260617-player4" defer></script>
+  <script src="./demo-data.js?v=20260617-player4" defer></script>
+  <script src="./app.js?v=20260617-player4" defer></script>
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -109,6 +109,18 @@
         <button class="icon-button" id="closeModalButton" type="button" aria-label="Закрыть"></button>
       </header>
       <div id="modalContent"></div>
+    </article>
+  </div>
+
+
+  <div id="playerModal" class="modal player-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-player-modal></div>
+    <article class="modal-sheet glass player-profile-sheet" role="dialog" aria-modal="true" aria-labelledby="playerModalTitle">
+      <header class="modal-header player-modal-header">
+        <div><div class="eyebrow">Player Center</div><h2 id="playerModalTitle">Футболист</h2></div>
+        <button class="icon-button" id="closePlayerModalButton" type="button" aria-label="Закрыть"></button>
+      </header>
+      <div id="playerModalContent"></div>
     </article>
   </div>
 
