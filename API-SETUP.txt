@@ -1,14 +1,17 @@
-{
-  "name": "wc26-live-api",
-  "version": "2.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "secret": "wrangler secret put API_FOOTBALL_KEY"
-  },
-  "devDependencies": {
-    "wrangler": "^4.20.0"
-  }
-}
+ПОДКЛЮЧЕНИЕ БЕСПЛАТНОГО LIVE API
+
+1. Создайте бесплатный аккаунт API-Football / API-Sports и скопируйте API key.
+2. Откройте терминал в папке worker.
+3. Выполните:
+
+   npm install
+   npx wrangler login
+   npm run secret
+   npm run deploy
+
+4. При npm run secret вставьте API key.
+5. Скопируйте URL вида https://wc26-live-api....workers.dev
+6. В корневом config.js замените WC26_WORKER_URL на этот URL.
+7. Загрузите обновлённые файлы в GitHub.
+
+Проверка: откройте URL_WORKER/api/health — configured должен быть true.
