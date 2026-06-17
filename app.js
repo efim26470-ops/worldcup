@@ -227,6 +227,8 @@
       team: player.team || statistics.team?.name || 'Сборная',
       countryCode: String(player.countryCode || player.flagCode || '').toLowerCase(),
       photo: player.photo || player.player?.photo || '',
+      photoCandidates: Array.isArray(player.photoCandidates) ? player.photoCandidates : [],
+      wikidataId: String(player.wikidataId || ''),
       number: player.number ?? player.jersey ?? null,
       pos: player.pos || player.position || statistics.games?.position || '',
       age: player.age ?? player.player?.age ?? null,
@@ -315,6 +317,9 @@
 
   function playerPhotoCandidates(player) {
     const result = [];
+    for (const candidate of (player?.photoCandidates || [])) {
+      if (candidate) result.push(mediaProxy(candidate), candidate);
+    }
     const addRemote = (url) => {
       if (!url) return;
       result.push(mediaProxy(url), url);
@@ -340,7 +345,7 @@
 
   function avatarMarkup(player, compact = false, large = false) {
     const classes = ['player-avatar', compact ? 'compact' : '', large ? 'large' : ''].filter(Boolean).join(' ');
-    return `<span class="${classes}"><span>${escapeHtml(initials(player?.name))}</span><img class="media-fallback" alt="${escapeHtml(player?.name || 'Игрок')}" data-media-candidates="${encodedCandidates(playerPhotoCandidates(player))}"></span>`;
+    return `<span class="${classes}"><span>${escapeHtml(initials(player?.name))}</span><img class="media-fallback" alt="${escapeHtml(player?.name || 'Игрок')}" data-media-candidates="${encodedCandidates(playerPhotoCandidates(player))}" data-player-name="${escapeHtml(player?.name || '')}" data-player-team="${escapeHtml(player?.team || player?.nationality || '')}" data-player-espn-id="${escapeHtml(player?.espnId || '')}" data-player-api-id="${escapeHtml(player?.apiId || '')}"></span>`;
   }
 
 
@@ -348,7 +353,7 @@
     const safe = normalizePlayer(player || {});
     const payload = {
       id: safe.id, apiId: safe.apiId, espnId: safe.espnId, name: safe.name,
-      team: safe.team, countryCode: safe.countryCode, photo: safe.photo,
+      team: safe.team, countryCode: safe.countryCode, photo: safe.photo, photoCandidates: safe.photoCandidates,
       number: safe.number, pos: safe.pos, age: safe.age, nationality: safe.nationality
     };
     return escapeHtml(encodeURIComponent(JSON.stringify(payload)));
@@ -374,10 +379,36 @@
       img.dataset.bound = '1';
       let candidates = [];
       try { candidates = JSON.parse(decodeURIComponent(img.dataset.mediaCandidates || '[]')); } catch { candidates = []; }
+      candidates = [...new Set(candidates.filter(Boolean))];
       let index = 0;
-      const next = () => {
+      let enriching = false;
+      const enrich = async () => {
+        const name = img.dataset.playerName || '';
+        if (!name || img.dataset.mediaEnriched === '1' || enriching) return false;
+        enriching = true;
+        img.dataset.mediaEnriched = '1';
+        img.closest('.player-avatar')?.classList.add('media-loading');
+        try {
+          const url = new URL(`${CONFIG.apiBase}/api/player/media`);
+          url.searchParams.set('name', name);
+          if (img.dataset.playerTeam) url.searchParams.set('team', img.dataset.playerTeam);
+          if (img.dataset.playerEspnId) url.searchParams.set('espnId', img.dataset.playerEspnId);
+          if (img.dataset.playerApiId) url.searchParams.set('apiId', img.dataset.playerApiId);
+          url.searchParams.set('v', CONFIG.build);
+          const payload = await fetchJson(url.toString(), 22000);
+          const remote = [payload.photo, ...(payload.photoCandidates || [])].filter(Boolean);
+          const expanded = remote.flatMap(item => [mediaProxy(item), item]);
+          const before = candidates.length;
+          candidates.push(...expanded.filter(item => item && !candidates.includes(item)));
+          return candidates.length > before;
+        } catch { return false; }
+        finally { enriching = false; img.closest('.player-avatar')?.classList.remove('media-loading'); }
+      };
+      const next = async () => {
         while (index < candidates.length && !candidates[index]) index += 1;
         if (index >= candidates.length) {
+          const added = await enrich();
+          if (added) return next();
           img.hidden = true;
           img.closest('.player-avatar, .flag-frame, .mini-flag-wrap')?.classList.add('fallback-only');
           return;
@@ -385,9 +416,13 @@
         img.hidden = false;
         img.src = candidates[index++];
       };
-      img.addEventListener('error', next);
-      img.addEventListener('load', () => img.closest('.player-avatar, .flag-frame, .mini-flag-wrap')?.classList.add('image-loaded'));
-      next();
+      img.addEventListener('error', () => { void next(); });
+      img.addEventListener('load', () => {
+        const holder = img.closest('.player-avatar, .flag-frame, .mini-flag-wrap');
+        holder?.classList.add('image-loaded');
+        holder?.classList.remove('fallback-only');
+      });
+      void next();
     });
   }
 
@@ -1085,7 +1120,7 @@
   }
 
   function renderPlayerHero(profile) {
-    const player = normalizePlayer({ ...state.playerSeed, ...(profile?.player || {}) });
+    const player = normalizePlayer({ ...state.playerSeed, ...(profile?.player || {}), photoCandidates: profile?.player?.photoCandidates || state.playerSeed?.photoCandidates || [] });
     const club = profile?.currentClub || {};
     const status = profile?.status || (club.name ? 'Действующий игрок' : 'Статус клуба уточняется');
     const clubLogo = club.logo ? `<span class="club-logo"><img class="media-fallback" alt="" data-media-candidates="${encodedCandidates([mediaProxy(club.logo), club.logo])}"></span>` : '<span class="club-logo fallback-club">FC</span>';
@@ -1101,9 +1136,14 @@
   function renderPlayerOverview(profile) {
     const total = profile?.nationalCareer || {};
     const wc = profile?.worldCup2026 || {};
-    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Сборная · сезон 2026</div><h3>Главные показатели</h3></div><span class="data-quality-badge">Обновляется по API</span></div>
-      <div class="player-stat-grid">${statCard('Матчи', total.appearances)}${statCard('Минуты', total.minutes)}${statCard('Голы', total.goals)}${statCard('Ассисты', total.assists)}${statCard('Средняя оценка', total.rating)}${statCard('Турниры', total.tournaments)}</div>
-      <div class="profile-callout"><span class="profile-callout-icon">${icon('trophy')}</span><div><strong>ЧМ‑2026</strong><span>${safeNumber(wc.appearances)} ${pluralMatches(wc.appearances)}, ${safeNumber(wc.goals)} голов, ${safeNumber(wc.assists)} ассистов${wc.cleanSheets !== null && wc.cleanSheets !== undefined ? ` · ${safeNumber(wc.cleanSheets)} сухих матчей` : ''}</span></div></div>
+    const sources = (profile?.sources || []).join(' · ');
+    const biography = profile?.biography ? `<div class="player-biography"><h4>О футболисте</h4><p>${escapeHtml(profile.biography)}</p></div>` : '';
+    const links = (profile?.externalLinks || []).filter(item => /^https:\/\//.test(item.url || ''));
+    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Карьера в сборной</div><h3>Главные показатели</h3></div>${sources ? `<span class="data-quality-badge">${escapeHtml(sources)}</span>` : ''}</div>
+      <div class="player-stat-grid">${statCard('Матчи', total.appearances)}${statCard('Минуты на ЧМ‑2026', total.minutes)}${statCard('Голы', total.goals)}${statCard('Ассисты на ЧМ‑2026', total.assists)}${statCard('Средняя оценка', total.rating)}${statCard('Турниры', total.tournaments)}</div>
+      <div class="profile-callout"><span class="profile-callout-icon">${icon('trophy')}</span><div><strong>ЧМ‑2026</strong><span>${metricValue(wc.appearances)} матчей · ${metricValue(wc.goals)} голов · ${metricValue(wc.assists)} ассистов${wc.cleanSheets !== null && wc.cleanSheets !== undefined ? ` · ${metricValue(wc.cleanSheets)} сухих матчей` : ''}</span></div></div>
+      ${biography}
+      ${links.length ? `<div class="player-source-links">${links.map(item => `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.label)}${icon('arrow','tiny-icon')}</a>`).join('')}</div>` : ''}
     </div>`;
   }
 
@@ -1134,8 +1174,8 @@
 
   function renderHistoryRows(history) {
     const tournaments = history?.tournaments || [];
-    if (!tournaments.length) return '<div class="empty compact"><strong>Выступления за сборную не найдены</strong><span>В бесплатном тарифе часть старых сезонов может быть недоступна.</span></div>';
-    return `<div class="history-timeline">${tournaments.map(item => `<article class="history-card"><div class="history-season-mark">${escapeHtml(history.season)}</div><div class="history-card-main"><strong>${escapeHtml(item.competition || 'Турнир')}</strong><span>${escapeHtml(item.team || profileTeamName())}</span></div><div class="history-mini-stats"><span><b>${safeNumber(item.appearances)}</b> матчей</span><span><b>${safeNumber(item.goals)}</b> голов</span><span><b>${safeNumber(item.assists)}</b> ассистов</span><span><b>${metricValue(item.rating)}</b> оценка</span></div></article>`).join('')}</div>`;
+    if (!tournaments.length) return '<div class="empty compact"><strong>Выступления за сборную не найдены</strong><span>Для этого сезона структурированная статистика не найдена. Проверь другой год.</span></div>';
+    return `<div class="history-timeline">${tournaments.map(item => `<article class="history-card"><div class="history-season-mark">${escapeHtml(history.season)}</div><div class="history-card-main"><strong>${escapeHtml(item.competition || 'Турнир')}</strong><span>${escapeHtml(item.team || profileTeamName())}</span></div><div class="history-mini-stats"><span><b>${metricValue(item.appearances)}</b> матчей</span><span><b>${metricValue(item.goals)}</b> голов</span><span><b>${metricValue(item.assists)}</b> ассистов</span><span><b>${metricValue(item.rating)}</b> оценка</span></div>${item.note ? `<small class="history-note">${escapeHtml(item.note)}</small>` : ''}</article>`).join('')}</div>`;
   }
 
   function profileTeamName() {
@@ -1191,7 +1231,9 @@
     renderPlayerModal();
     try {
       const url = new URL(`${CONFIG.apiBase}/api/player`);
-      url.searchParams.set('id', state.playerSeed.apiId || '');
+      url.searchParams.set('id', state.playerSeed.id || '');
+      url.searchParams.set('apiId', state.playerSeed.apiId || '');
+      url.searchParams.set('espnId', state.playerSeed.espnId || '');
       url.searchParams.set('name', state.playerSeed.name || '');
       url.searchParams.set('team', state.playerSeed.team || '');
       url.searchParams.set('country', state.playerSeed.nationality || state.playerSeed.team || '');
@@ -1207,11 +1249,14 @@
   }
 
   async function ensurePlayerHistory(season) {
-    if (!state.playerProfile?.player?.id || state.playerHistory.has(season) || state.playerHistoryLoading) { renderPlayerModal(); return; }
+    if (!(state.playerProfile?.player?.id || state.playerProfile?.player?.apiId || state.playerProfile?.player?.espnId || state.playerProfile?.player?.name) || state.playerHistory.has(season) || state.playerHistoryLoading) { renderPlayerModal(); return; }
     state.playerHistoryLoading = true; renderPlayerModal();
     try {
       const url = new URL(`${CONFIG.apiBase}/api/player/history`);
-      url.searchParams.set('id', state.playerProfile.player.id);
+      url.searchParams.set('id', state.playerProfile.player.id || '');
+      url.searchParams.set('apiId', state.playerProfile.player.apiId || '');
+      url.searchParams.set('espnId', state.playerProfile.player.espnId || '');
+      url.searchParams.set('name', state.playerProfile.player.name || state.playerSeed?.name || '');
       url.searchParams.set('season', season);
       url.searchParams.set('country', state.playerProfile.player.nationality || state.playerSeed?.team || '');
       url.searchParams.set('v', CONFIG.build);
@@ -1333,9 +1378,65 @@
     localStorage.setItem(CONFIG.themeStorageKey, state.theme); applyTheme();
   }
 
+  function installPlatform() {
+    const ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+    if (/Windows/i.test(ua)) return 'windows';
+    if (/Macintosh|Mac OS X/i.test(ua)) return 'mac';
+    if (/Android/i.test(ua)) return 'android';
+    return 'desktop';
+  }
+
+  function renderInstallModal() {
+    const platform = installPlatform();
+    const ready = Boolean(state.deferredInstall);
+    const copy = {
+      windows: ['Установить на Windows', 'Открой сайт в Microsoft Edge или Google Chrome и нажми кнопку установки. Приложение появится в меню «Пуск» и будет запускаться в отдельном окне.'],
+      ios: ['Добавить на iPhone', 'Открой сайт в Safari, нажми «Поделиться», затем «На экран Домой».'],
+      mac: ['Установить на macOS', 'В Chrome или Edge используй кнопку установки. В Safari выбери «Файл → Добавить в Dock».'],
+      android: ['Установить на Android', 'Открой меню браузера и выбери «Установить приложение» или «Добавить на главный экран».'],
+      desktop: ['Установить приложение', 'Используй Chrome или Edge: в адресной строке появится значок установки.']
+    }[platform];
+    $('#installContent').innerHTML = `<div class="install-visual">${icon('install','install-big-icon')}</div><h3>${copy[0]}</h3><p>${copy[1]}</p>
+      <div class="install-benefits"><span>✓ отдельное окно</span><span>✓ офлайн-оболочка</span><span>✓ уведомления</span><span>✓ адаптация под экран</span></div>
+      <button class="primary-button install-confirm" type="button" data-confirm-install ${ready ? '' : 'disabled'}>${ready ? 'Установить сейчас' : 'Ожидаю системную кнопку браузера'}</button>`;
+    $('[data-confirm-install]', $('#installContent'))?.addEventListener('click', async () => {
+      if (!state.deferredInstall) return;
+      state.deferredInstall.prompt();
+      await state.deferredInstall.userChoice;
+      state.deferredInstall = null;
+      closeInstallModal();
+      updateInstallUi();
+    });
+  }
+
+  function openInstallModal() {
+    renderInstallModal();
+    $('#installModal').classList.add('open');
+    $('#installModal').setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeInstallModal() {
+    $('#installModal')?.classList.remove('open');
+    $('#installModal')?.setAttribute('aria-hidden', 'true');
+    if (!$('#playerModal').classList.contains('open') && !$('#matchModal').classList.contains('open') && !state.notificationModalOpen) document.body.style.overflow = '';
+  }
+
+  function updateInstallUi() {
+    const platform = installPlatform();
+    const label = platform === 'windows' ? 'Установить на Windows' : platform === 'ios' ? 'На экран iPhone' : platform === 'mac' ? 'Установить на Mac' : 'Установить приложение';
+    $('#sidebarInstallLabel').textContent = label;
+    $('#heroInstallButton').textContent = label;
+    $('#installButton').classList.toggle('install-ready', Boolean(state.deferredInstall));
+  }
+
   async function installPwa() {
-    if (!state.deferredInstall) return;
-    state.deferredInstall.prompt(); await state.deferredInstall.userChoice; state.deferredInstall = null; $('#installButton').classList.add('hidden');
+    if (!state.deferredInstall) { openInstallModal(); return; }
+    state.deferredInstall.prompt();
+    await state.deferredInstall.userChoice;
+    state.deferredInstall = null;
+    updateInstallUi();
   }
 
   async function registerServiceWorker() {
@@ -1349,23 +1450,31 @@
     $('#closeModalButton').innerHTML = icon('close');
     $('#closeNotificationButton').innerHTML = icon('close');
     $('#closePlayerModalButton').innerHTML = icon('close');
+    $('#closeInstallButton').innerHTML = icon('close');
     $('#installButton').innerHTML = icon('install');
+    $('#sidebarInstallIcon').innerHTML = icon('install');
     $('#refreshButton').addEventListener('click', () => loadSnapshot({ manual: true }));
     $('#themeButton').addEventListener('click', cycleTheme);
     $('#notificationButton').addEventListener('click', openNotificationModal);
     $('#topNotificationButton').addEventListener('click', openNotificationModal);
     $('#installButton').addEventListener('click', installPwa);
+    $('#sidebarInstallButton').addEventListener('click', installPwa);
+    $('#heroInstallButton').addEventListener('click', installPwa);
     $('#closeModalButton').addEventListener('click', closeMatchModal);
     $('#closeNotificationButton').addEventListener('click', closeNotificationModal);
     $('#closePlayerModalButton').addEventListener('click', closePlayerModal);
+    $('#closeInstallButton').addEventListener('click', closeInstallModal);
     $$('[data-close-match-modal]').forEach(element => element.addEventListener('click', closeMatchModal));
     $$('[data-close-notification-modal]').forEach(element => element.addEventListener('click', closeNotificationModal));
     $$('[data-close-player-modal]').forEach(element => element.addEventListener('click', closePlayerModal));
-    window.addEventListener('keydown', event => { if (event.key === 'Escape') { closeMatchModal(); closeNotificationModal(); closePlayerModal(); } });
+    $$('[data-close-install-modal]').forEach(element => element.addEventListener('click', closeInstallModal));
+    window.addEventListener('keydown', event => { if (event.key === 'Escape') { closeMatchModal(); closeNotificationModal(); closePlayerModal(); closeInstallModal(); } });
     window.addEventListener('hashchange', () => { const parsed = parseHash(); state.route = parsed.route; state.teamKey = parsed.teamKey; render(); });
     window.addEventListener('online', () => loadSnapshot());
-    window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); state.deferredInstall = event; $('#installButton').classList.remove('hidden'); });
+    window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); state.deferredInstall = event; updateInstallUi(); });
+    window.addEventListener('appinstalled', () => { state.deferredInstall = null; updateInstallUi(); showToast('World Cup 26 установлен.'); });
     matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if (state.theme === 'system') applyTheme(); });
+    updateInstallUi();
     updateClock(); setInterval(updateClock, 30000);
   }
 

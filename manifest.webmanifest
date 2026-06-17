@@ -1,23 +1,65 @@
 {
   "name": "World Cup 26 — Live Center",
   "short_name": "World Cup 26",
-  "description": "Live-центр чемпионата мира по футболу 2026: матчи, сборные, составы и статистика",
-  "start_url": "./#today",
+  "description": "Чемпионат мира 2026: live-счёт, расписание, сборные, игроки и уведомления",
+  "start_url": "./?source=pwa#today",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#071522",
   "theme_color": "#071522",
   "lang": "ru",
-  "categories": ["sports", "news", "entertainment"],
+  "categories": [
+    "sports",
+    "news",
+    "entertainment"
+  ],
   "icons": [
-    { "src": "./assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "./assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "./assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Матчи сегодня", "short_name": "Сегодня", "url": "./#today" },
-    { "name": "Расписание", "short_name": "Матчи", "url": "./#schedule" },
-    { "name": "Сборные", "short_name": "Сборные", "url": "./#teams" },
-    { "name": "Избранное", "short_name": "Избранное", "url": "./#favorites" }
-  ]
+    {
+      "name": "Матчи сегодня",
+      "short_name": "Сегодня",
+      "url": "./#today"
+    },
+    {
+      "name": "Расписание",
+      "short_name": "Матчи",
+      "url": "./#schedule"
+    },
+    {
+      "name": "Сборные",
+      "short_name": "Сборные",
+      "url": "./#teams"
+    },
+    {
+      "name": "Избранное",
+      "short_name": "Избранное",
+      "url": "./#favorites"
+    },
+    {
+      "name": "Игроки",
+      "short_name": "Игроки",
+      "url": "./#players"
+    }
+  ],
+  "id": "./",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
+  "prefer_related_applications": false
 }

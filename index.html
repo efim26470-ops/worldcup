@@ -13,11 +13,11 @@
   <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./assets/icons/favicon-16.png">
-  <link rel="stylesheet" href="./styles.css?v=20260617-player4">
+  <link rel="stylesheet" href="./styles.css?v=20260617-omni51">
   <title>World Cup 26 — Live Center</title>
-  <script src="./config.js?v=20260617-player4" defer></script>
-  <script src="./demo-data.js?v=20260617-player4" defer></script>
-  <script src="./app.js?v=20260617-player4" defer></script>
+  <script src="./config.js?v=20260617-omni51" defer></script>
+  <script src="./demo-data.js?v=20260617-omni51" defer></script>
+  <script src="./app.js?v=20260617-omni51" defer></script>
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -41,6 +41,10 @@
           <span id="notificationIcon" aria-hidden="true"></span>
           <span><strong>Уведомления</strong><small id="notificationLabel">Выключены</small></span>
         </button>
+        <button id="sidebarInstallButton" class="surface-button sidebar-action install-surface" type="button">
+          <span id="sidebarInstallIcon" aria-hidden="true"></span>
+          <span><strong>Установить приложение</strong><small id="sidebarInstallLabel">Windows · macOS · iPhone</small></span>
+        </button>
         <button id="themeButton" class="surface-button theme-button" type="button">
           <span id="themeIcon" aria-hidden="true"></span>
           <span><strong>Тема</strong><small id="themeLabel">Системная</small></span>
@@ -60,7 +64,7 @@
           <div id="currentClock" class="current-clock"></div>
         </div>
         <div class="topbar-actions">
-          <button id="installButton" class="icon-button hidden" type="button" title="Установить приложение" aria-label="Установить приложение"></button>
+          <button id="installButton" class="icon-button" type="button" title="Установить приложение" aria-label="Установить приложение"></button>
           <button id="topNotificationButton" class="icon-button" type="button" title="Уведомления" aria-label="Уведомления"></button>
           <button id="refreshButton" class="primary-button" type="button"><span id="refreshIcon"></span><span>Обновить</span></button>
         </div>
@@ -75,6 +79,7 @@
           <div class="hero-actions">
             <button class="hero-button primary" type="button" data-route="schedule">Смотреть матчи</button>
             <button class="hero-button" type="button" data-route="teams">Все сборные</button>
+            <button id="heroInstallButton" class="hero-button install-hero-button" type="button">Установить приложение</button>
           </div>
           <div id="syncStatus" class="sync-pill" role="status" aria-live="polite"></div>
         </div>
@@ -135,6 +140,18 @@
         <button class="icon-button" id="closeNotificationButton" type="button" aria-label="Закрыть"></button>
       </header>
       <div id="notificationContent"></div>
+    </article>
+  </div>
+
+
+  <div id="installModal" class="modal compact-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-install-modal></div>
+    <article class="modal-sheet glass install-sheet" role="dialog" aria-modal="true" aria-labelledby="installTitle">
+      <header class="modal-header">
+        <div><div class="eyebrow">Приложение World Cup 26</div><h2 id="installTitle">Установка</h2></div>
+        <button class="icon-button" id="closeInstallButton" type="button" aria-label="Закрыть"></button>
+      </header>
+      <div id="installContent"></div>
     </article>
   </div>
 

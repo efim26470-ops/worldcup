@@ -675,3 +675,318 @@ img { max-width: 100%; }
   .player-profile-loading { grid-template-columns: 90px 1fr; padding: 18px; }
   .profile-skeleton-photo { width: 84px; height: 84px; border-radius: 24px; }
 }
+
+/* ========================================================================== 
+   Omni v5: responsive player center, richer motion and install experience
+   ========================================================================== */
+
+:root {
+  --content-max: 1510px;
+  --modal-header-height: 78px;
+}
+
+.glass,
+.match-card,
+.player-row,
+.squad-card,
+.team-card,
+.player-stat-card,
+.trophy-card,
+.history-card {
+  isolation: isolate;
+}
+
+.glass::before,
+.match-card::before,
+.player-stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 0 34%, rgba(255,255,255,.07) 46%, transparent 58%);
+  transform: translateX(-120%);
+  transition: transform .8s cubic-bezier(.2,.8,.2,1);
+  z-index: -1;
+}
+.glass:hover::before,
+.match-card:hover::before,
+.player-stat-card:hover::before { transform: translateX(120%); }
+
+.install-surface { position: relative; overflow: hidden; }
+.install-surface::after {
+  content: '';
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  right: -18px;
+  top: -18px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  filter: blur(2px);
+}
+.install-hero-button {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft));
+}
+.icon-button.install-ready { color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* Player modal is split into a fixed header and one scroll container. This
+   prevents the title, hero and tabs from painting over each other. */
+.player-profile-sheet {
+  width: min(1120px, calc(100vw - 32px));
+  height: min(940px, calc(100dvh - 32px));
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 32px;
+}
+.player-modal-header {
+  position: relative;
+  inset: auto;
+  z-index: 50;
+  flex: 0 0 auto;
+  min-height: var(--modal-header-height);
+  margin: 0;
+  padding: 18px 20px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 98%, transparent), color-mix(in srgb, var(--surface-solid) 92%, transparent));
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(30px) saturate(1.45);
+  -webkit-backdrop-filter: blur(30px) saturate(1.45);
+}
+.player-modal-header h2 {
+  max-width: min(74vw, 760px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#playerModalContent {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px 20px calc(26px + env(safe-area-inset-bottom, 0px));
+  overscroll-behavior: contain;
+  scroll-padding-top: 78px;
+  scrollbar-gutter: stable;
+}
+.player-profile-hero {
+  grid-template-columns: minmax(126px, 150px) minmax(240px, 1.25fr) minmax(270px, .8fr);
+  gap: clamp(18px, 2.4vw, 30px);
+  padding: clamp(20px, 3vw, 30px);
+  min-width: 0;
+}
+.player-profile-photo,
+.player-profile-copy,
+.player-bio-grid { min-width: 0; }
+.player-profile-copy h2 {
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.player-tabs {
+  position: sticky;
+  top: -18px;
+  z-index: 45;
+  margin: 14px -20px 0;
+  padding: 14px 20px 12px;
+  min-height: 68px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 99%, transparent) 0 76%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+}
+.player-profile-section { padding-top: 18px; }
+.player-stat-grid,
+.player-stat-grid.extended {
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  align-items: stretch;
+}
+.player-stat-card { min-width: 0; overflow: hidden; }
+.player-stat-card strong { overflow-wrap: anywhere; }
+.player-biography {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface-soft);
+}
+.player-biography h4 { margin: 0 0 8px; font-size: 16px; }
+.player-biography p { margin: 0; color: var(--muted); line-height: 1.62; }
+.player-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+.player-source-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 15px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text);
+  font-weight: 800;
+  transition: transform .2s ease, background .2s ease;
+}
+.player-source-links a:hover { transform: translateY(-2px); background: var(--surface-strong); }
+.history-note { grid-column: 2 / -1; color: var(--faint); }
+
+/* Portrait loader: initials remain visible while open sources are queried. */
+.player-avatar { overflow: hidden; }
+.player-avatar.media-loading::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: conic-gradient(transparent, color-mix(in srgb, var(--accent) 70%, transparent), transparent 38%);
+  animation: media-spin 1.15s linear infinite;
+  opacity: .55;
+}
+.player-avatar.media-loading > span { position: relative; z-index: 2; }
+.player-avatar img { position: relative; z-index: 3; object-position: center top; }
+@keyframes media-spin { to { transform: rotate(1turn); } }
+
+.squad-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); }
+.squad-card { min-width: 0; overflow: hidden; }
+.squad-card > div { min-width: 0; }
+.squad-card strong,
+.squad-card span { max-width: 100%; }
+.squad-card strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-row {
+  grid-template-columns: 28px 52px minmax(0, 1fr) minmax(48px, auto);
+  min-width: 0;
+  overflow: hidden;
+}
+.player-row .player-copy,
+.player-row .player-name,
+.player-row .player-team { min-width: 0; }
+.player-row .player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-row .player-team { max-width: 100%; overflow: hidden; }
+.player-row .player-team > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Install dialog */
+.install-sheet { width: min(560px, calc(100vw - 28px)); }
+.install-sheet #installContent { text-align: center; padding: 4px 8px 10px; }
+.install-visual {
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  margin: 8px auto 18px;
+  border-radius: 28px;
+  color: #061521;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 22px 54px color-mix(in srgb, var(--accent-2) 28%, transparent), inset 0 0 0 1px rgba(255,255,255,.5);
+  animation: install-float 3.5s ease-in-out infinite;
+}
+.install-big-icon { width: 42px; height: 42px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.install-sheet h3 { margin: 0 0 8px; font-size: 25px; }
+.install-sheet p { margin: 0 auto; max-width: 460px; color: var(--muted); line-height: 1.55; }
+.install-benefits { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 18px 0; text-align: left; }
+.install-benefits span { padding: 11px 12px; border-radius: 14px; background: var(--surface-soft); border: 1px solid var(--line); }
+.install-confirm { width: 100%; justify-content: center; }
+.install-confirm:disabled { opacity: .56; cursor: not-allowed; }
+@keyframes install-float { 50% { transform: translateY(-6px) rotate(-1deg); } }
+
+/* Better scaling for laptops, tablets, phones and ultra-wide screens. */
+@media (min-width: 1700px) {
+  .app-shell { width: min(1660px, 100%); grid-template-columns: 280px minmax(0,1fr); }
+  .content-grid { grid-template-columns: minmax(0, 1.75fr) minmax(340px, .72fr); }
+}
+
+@media (max-width: 1100px) {
+  .player-profile-hero { grid-template-columns: 116px minmax(0,1fr); }
+  .player-bio-grid { grid-column: 1 / -1; grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .content-grid { grid-template-columns: 1fr; }
+  .side-panel { order: 2; }
+}
+
+@media (max-width: 820px) {
+  :root { --modal-header-height: 68px; }
+  .player-profile-sheet {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .player-modal-header { padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 12px; min-height: calc(var(--modal-header-height) + env(safe-area-inset-top, 0px)); }
+  #playerModalContent { padding: 14px 14px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .player-tabs { top: -14px; margin: 12px -14px 0; padding: 12px 14px 11px; min-height: 62px; }
+  .player-profile-hero { grid-template-columns: 98px minmax(0,1fr); padding: 18px; border-radius: 25px; }
+  .player-profile-photo .player-avatar.large { width: 92px; height: 92px; border-radius: 27px; }
+  .player-profile-copy h2 { font-size: clamp(28px, 8vw, 42px); }
+  .player-bio-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .player-stat-grid, .player-stat-grid.extended { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 620px) {
+  .app-shell { padding-left: 10px; padding-right: 10px; }
+  .hero-actions { display: grid; grid-template-columns: 1fr; }
+  .hero-button { justify-content: center; width: 100%; }
+  .player-profile-hero { grid-template-columns: 80px minmax(0,1fr); gap: 12px; padding: 15px; }
+  .player-profile-photo .player-avatar.large { width: 76px; height: 76px; border-radius: 22px; }
+  .player-profile-copy h2 { font-size: 28px; }
+  .current-club-card { grid-column: 1 / -1; width: 100%; }
+  .player-bio-grid { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .player-bio-grid > span { min-height: 78px; padding: 12px; }
+  .player-tabs { gap: 8px; }
+  .modal-tab { flex: 0 0 auto; min-height: 42px; padding: 0 14px; white-space: nowrap; }
+  .player-stat-grid, .player-stat-grid.extended { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .player-stat-card { min-height: 104px; padding: 14px; }
+  .player-stat-card strong { font-size: 28px; }
+  .history-card { grid-template-columns: 52px minmax(0,1fr); }
+  .history-mini-stats { grid-column: 1 / -1; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .history-note { grid-column: 1 / -1; }
+  .player-row { grid-template-columns: 20px 46px minmax(0,1fr) 46px; gap: 8px; padding: 9px; }
+  .player-value { font-size: 18px; }
+  .install-benefits { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 390px) {
+  .player-profile-hero { grid-template-columns: 66px minmax(0,1fr); }
+  .player-profile-photo .player-avatar.large { width: 62px; height: 62px; border-radius: 19px; }
+  .player-profile-copy h2 { font-size: 25px; }
+  .player-meta-line { gap: 6px; }
+  .player-meta-line span { font-size: 11px; padding: 7px 9px; }
+  .player-bio-grid { grid-template-columns: 1fr; }
+  .player-stat-grid, .player-stat-grid.extended { grid-template-columns: 1fr 1fr; }
+  .player-stat-card { min-height: 92px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass::before, .match-card::before, .player-stat-card::before { display: none; }
+  .install-visual, .player-avatar.media-loading::after { animation: none !important; }
+}
+
+/* Omni v5.1 — final small-screen polish */
+.data-quality-badge {
+  max-width: min(44vw, 230px);
+  text-align: right;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.player-profile-sheet,
+.player-profile-hero,
+.player-tabs,
+.player-profile-section,
+.player-stat-grid,
+.squad-grid { box-sizing: border-box; }
+.player-profile-section > * { min-width: 0; }
+.player-profile-sheet img { max-width: 100%; }
+
+@media (max-width: 620px) {
+  .data-quality-badge { max-width: 150px; font-size: 10px; }
+  .player-modal-header .eyebrow { font-size: 9px; }
+  .player-modal-header h2 { max-width: calc(100vw - 88px); }
+}
+
+@media (max-width: 390px) {
+  .player-bio-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .player-bio-grid > span { min-height: 70px; padding: 10px; }
+  .data-quality-badge { display: none; }
+}
