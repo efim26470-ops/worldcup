@@ -1,59 +1,276 @@
-const CACHE_VERSION = "wc26-shell-v1.0.0";
-const APP_SHELL = [
-  "./",
-  "./index.html",
-  "./styles.css",
-  "./config.js",
-  "./demo-data.js",
-  "./app.js",
-  "./manifest.webmanifest",
-  "./assets/icons/icon-192.png",
-  "./assets/icons/icon-512.png",
-  "./assets/icons/apple-touch-icon.png"
-];
+<!doctype html>
+<html lang="ru" data-theme="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071322" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#eef5ff" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Неофициальный live-центр чемпионата мира 2026: расписание, счета, таблицы и статистика.">
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
-});
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="World Cup 26">
+  <meta name="mobile-web-app-capable" content="yes">
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
-  );
-});
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./assets/icons/favicon-16.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>World Cup 26 — Live Center</title>
+</head>
+<body>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+  <div class="ambient ambient-c" aria-hidden="true"></div>
 
-self.addEventListener("fetch", (event) => {
-  const request = event.request;
-  if (request.method !== "GET") return;
-  const url = new URL(request.url);
+  <div class="app-shell">
+    <aside class="sidebar glass" aria-label="Основная навигация">
+      <button class="brand" type="button" data-route="home" aria-label="На главную">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 44 44" role="img">
+            <path d="M7 12.5 22 4l15 8.5v19L22 40 7 31.5z" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M14.5 17.2 22 13l7.5 4.2v9.5L22 31l-7.5-4.3z" fill="none" stroke="currentColor" stroke-width="2.2"/>
+            <path d="M22 13v18M14.5 17.2l15 9.5M29.5 17.2l-15 9.5" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".85"/>
+          </svg>
+        </span>
+        <span class="brand-copy">
+          <strong>World Cup 26</strong>
+          <small>Live Center</small>
+        </span>
+      </button>
 
-  if (url.pathname.includes("/api/")) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(() => caches.match(request))
-    );
-    return;
-  }
+      <nav class="side-nav" aria-label="Разделы">
+        <button class="nav-item active" type="button" data-route="home">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20H5a1 1 0 0 1-1-1z"/><path d="M9 20v-6h6v6"/></svg></span>
+          <span>Сегодня</span>
+        </button>
+        <button class="nav-item" type="button" data-route="schedule">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4v3M19 4v3M4 9h16M5 6h14a1 1 0 0 1 1 1v13H4V7a1 1 0 0 1 1-1Z"/><path d="M8 13h3v3H8zM14 13h3v3h-3z"/></svg></span>
+          <span>Матчи</span>
+        </button>
+        <button class="nav-item" type="button" data-route="standings">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V11h4v9M10 20V5h4v15M16 20v-7h4v7"/></svg></span>
+          <span>Таблицы</span>
+        </button>
+        <button class="nav-item" type="button" data-route="stats">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M6 20v-2a6 6 0 0 1 12 0v2M5 5l2 1M19 5l-2 1"/></svg></span>
+          <span>Статистика</span>
+        </button>
+        <button class="nav-item" type="button" data-route="favorites">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/></svg></span>
+          <span>Избранное</span>
+        </button>
+      </nav>
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((response) => {
-          if (response.ok && url.origin === self.location.origin) {
-            const copy = response.clone();
-            caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached || caches.match("./index.html"));
-      return cached || network;
-    })
-  );
-});
+      <div class="sidebar-bottom">
+        <button id="themeButton" class="soft-button" type="button" aria-label="Сменить тему">
+          <span id="themeIcon" aria-hidden="true">◐</span>
+          <span id="themeLabel">Системная</span>
+        </button>
+        <div class="source-mini">
+          <span id="sourceDot" class="source-dot"></span>
+          <span id="sourceLabel">Подключение…</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar glass">
+        <div>
+          <p class="eyebrow" id="topEyebrow">Чемпионат мира 2026</p>
+          <h1 id="pageTitle">Сегодня</h1>
+        </div>
+        <div class="top-actions">
+          <button id="refreshButton" class="icon-button" type="button" aria-label="Обновить данные" title="Обновить">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.35 5.65M20 4v7h-7"/></svg>
+          </button>
+          <button id="installButton" class="install-button" type="button" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
+            <span>Установить</span>
+          </button>
+          <button id="profileButton" class="avatar" type="button" aria-label="О приложении">26</button>
+        </div>
+      </header>
+
+      <section id="statusStrip" class="status-strip glass" aria-live="polite">
+        <div class="status-primary">
+          <span class="live-pulse" aria-hidden="true"></span>
+          <strong id="statusTitle">Загрузка матчей</strong>
+          <span id="statusText">Подготавливаем центр турнира…</span>
+        </div>
+        <div class="status-meta">
+          <span id="lastUpdated">—</span>
+          <span class="separator">•</span>
+          <span id="timezoneLabel">Локальное время</span>
+        </div>
+      </section>
+
+      <section id="dateRailSection" class="date-section" aria-label="Выбор даты">
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="eyebrow">Календарь</p>
+            <h2 id="selectedDateTitle">Матчи дня</h2>
+          </div>
+          <button id="todayButton" class="text-button" type="button">Сегодня</button>
+        </div>
+        <div class="date-rail-wrap">
+          <button id="datePrev" class="rail-arrow" type="button" aria-label="Предыдущие даты">‹</button>
+          <div id="dateRail" class="date-rail" role="list"></div>
+          <button id="dateNext" class="rail-arrow" type="button" aria-label="Следующие даты">›</button>
+        </div>
+      </section>
+
+      <section id="homeView" class="view active" data-view="home">
+        <div id="heroMatch" class="hero-card glass"></div>
+
+        <div class="dashboard-grid">
+          <section class="panel glass match-list-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Расписание и результаты</p>
+                <h2>Все матчи дня</h2>
+              </div>
+              <span id="matchCountBadge" class="count-badge">0</span>
+            </div>
+            <div id="matchList" class="match-list"></div>
+          </section>
+
+          <aside class="right-column">
+            <section class="panel glass">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Турнир</p>
+                  <h2>Лидеры групп</h2>
+                </div>
+                <button class="text-button" type="button" data-route="standings">Все</button>
+              </div>
+              <div id="groupLeaders" class="leader-list"></div>
+            </section>
+
+            <section class="panel glass">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Форма</p>
+                  <h2>Гонка бомбардиров</h2>
+                </div>
+                <button class="text-button" type="button" data-route="stats">Подробнее</button>
+              </div>
+              <div id="topScorersMini" class="scorer-list"></div>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section id="scheduleView" class="view" data-view="schedule">
+        <section class="panel glass large-panel">
+          <div class="section-heading wrap-heading">
+            <div>
+              <p class="eyebrow">Полное расписание</p>
+              <h2>Матчи чемпионата</h2>
+            </div>
+            <div class="segmented" role="group" aria-label="Фильтр матчей">
+              <button class="segment active" type="button" data-filter="all">Все</button>
+              <button class="segment" type="button" data-filter="live">В эфире</button>
+              <button class="segment" type="button" data-filter="upcoming">Будущие</button>
+              <button class="segment" type="button" data-filter="finished">Завершённые</button>
+            </div>
+          </div>
+          <div id="fullSchedule" class="schedule-groups"></div>
+        </section>
+      </section>
+
+      <section id="standingsView" class="view" data-view="standings">
+        <div class="section-heading page-section-heading">
+          <div>
+            <p class="eyebrow">Групповой этап</p>
+            <h2>Турнирные таблицы</h2>
+          </div>
+          <div class="legend-inline"><span><i class="legend-dot qualify"></i>Выход</span><span><i class="legend-dot playoff"></i>Лучшие третьи</span></div>
+        </div>
+        <div id="standingsGrid" class="standings-grid"></div>
+      </section>
+
+      <section id="statsView" class="view" data-view="stats">
+        <div class="stats-layout">
+          <section class="panel glass">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Индивидуальная статистика</p>
+                <h2>Бомбардиры</h2>
+              </div>
+            </div>
+            <div id="scorersTable" class="ranking-table"></div>
+          </section>
+          <section class="panel glass">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Создание моментов</p>
+                <h2>Ассистенты</h2>
+              </div>
+            </div>
+            <div id="assistsTable" class="ranking-table"></div>
+          </section>
+          <section class="panel glass wide-stat-card">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Лучшие выступления</p>
+                <h2>Оценки игроков</h2>
+              </div>
+              <span class="hint-chip">минимум 2 матча</span>
+            </div>
+            <div id="ratingsGrid" class="ratings-grid"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="favoritesView" class="view" data-view="favorites">
+        <section class="panel glass empty-favorites">
+          <div class="empty-icon" aria-hidden="true">★</div>
+          <h2>Избранные команды и матчи</h2>
+          <p>Нажимайте на звезду в карточке матча. Выбор сохраняется на этом устройстве и работает офлайн.</p>
+          <div id="favoritesList" class="match-list favorite-match-list"></div>
+        </section>
+      </section>
+
+      <footer class="footer">
+        <p>Неофициальный информационный проект. Не связан с FIFA и организаторами турнира.</p>
+        <p>Данные в демо-режиме предназначены для демонстрации интерфейса.</p>
+      </footer>
+    </main>
+  </div>
+
+  <nav class="bottom-nav glass" aria-label="Мобильная навигация">
+    <button class="bottom-nav-item active" type="button" data-route="home"><span>⌂</span><small>Сегодня</small></button>
+    <button class="bottom-nav-item" type="button" data-route="schedule"><span>▦</span><small>Матчи</small></button>
+    <button class="bottom-nav-item" type="button" data-route="standings"><span>▥</span><small>Таблицы</small></button>
+    <button class="bottom-nav-item" type="button" data-route="stats"><span>◉</span><small>Статистика</small></button>
+  </nav>
+
+  <dialog id="matchDialog" class="match-dialog">
+    <div class="dialog-shell glass">
+      <button id="dialogClose" class="dialog-close" type="button" aria-label="Закрыть">×</button>
+      <div id="matchDialogContent"></div>
+    </div>
+  </dialog>
+
+  <dialog id="aboutDialog" class="about-dialog">
+    <div class="dialog-shell glass small-dialog">
+      <button class="dialog-close" type="button" data-close-about aria-label="Закрыть">×</button>
+      <div class="about-mark">26</div>
+      <p class="eyebrow">World Cup 26 Live Center</p>
+      <h2>Приложение для болельщиков</h2>
+      <p>Расписание по локальному времени, live-счёт, таблицы, составы, события, личные встречи и оценки игроков — в одном адаптивном PWA.</p>
+      <div class="about-tags"><span>Liquid Glass</span><span>PWA</span><span>Offline shell</span><span>Live API ready</span></div>
+      <button class="primary-button" type="button" data-close-about>Понятно</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast glass" role="status" aria-live="polite"></div>
+
+  <script src="./config.js"></script>
+  <script src="./demo-data.js"></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>

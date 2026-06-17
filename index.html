@@ -1,278 +1,720 @@
-<!doctype html>
-<html lang="ru" data-theme="system">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#071322" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#eef5ff" media="(prefers-color-scheme: light)">
-  <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Неофициальный live-центр чемпионата мира 2026: расписание, счета, таблицы и статистика.">
+(() => {
+  "use strict";
 
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="World Cup 26">
-  <meta name="mobile-web-app-capable" content="yes">
+  const config = window.WC26_CONFIG || {};
+  const demoData = window.WC26_DEMO_DATA || { matches: [], standings: [], leaders: {} };
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="apple-touch-icon" sizes="180x180" href="./assets/icons/apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/favicon-32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="./assets/icons/favicon-16.png">
-  <link rel="stylesheet" href="./styles.css">
-  <title>World Cup 26 — Live Center</title>
-</head>
-<body>
-  <div class="ambient ambient-a" aria-hidden="true"></div>
-  <div class="ambient ambient-b" aria-hidden="true"></div>
-  <div class="ambient ambient-c" aria-hidden="true"></div>
+  const state = {
+    data: demoData,
+    selectedDate: null,
+    route: "home",
+    scheduleFilter: "all",
+    favorites: new Set(JSON.parse(localStorage.getItem("wc26:favorites") || "[]")),
+    theme: localStorage.getItem("wc26:theme") || "system",
+    source: "demo",
+    lastError: null,
+    deferredInstallPrompt: null,
+    activeMatch: null,
+    activeDialogTab: "overview"
+  };
 
-  <div class="app-shell">
-    <aside class="sidebar glass" aria-label="Основная навигация">
-      <button class="brand" type="button" data-route="home" aria-label="На главную">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 44 44" role="img">
-            <path d="M7 12.5 22 4l15 8.5v19L22 40 7 31.5z" fill="none" stroke="currentColor" stroke-width="2.4"/>
-            <path d="M14.5 17.2 22 13l7.5 4.2v9.5L22 31l-7.5-4.3z" fill="none" stroke="currentColor" stroke-width="2.2"/>
-            <path d="M22 13v18M14.5 17.2l15 9.5M29.5 17.2l-15 9.5" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".85"/>
-          </svg>
-        </span>
-        <span class="brand-copy">
-          <strong>World Cup 26</strong>
-          <small>Live Center</small>
-        </span>
-      </button>
+  const refs = {
+    html: document.documentElement,
+    pageTitle: $("#pageTitle"),
+    topEyebrow: $("#topEyebrow"),
+    dateRailSection: $("#dateRailSection"),
+    dateRail: $("#dateRail"),
+    selectedDateTitle: $("#selectedDateTitle"),
+    heroMatch: $("#heroMatch"),
+    matchList: $("#matchList"),
+    matchCountBadge: $("#matchCountBadge"),
+    groupLeaders: $("#groupLeaders"),
+    topScorersMini: $("#topScorersMini"),
+    fullSchedule: $("#fullSchedule"),
+    standingsGrid: $("#standingsGrid"),
+    scorersTable: $("#scorersTable"),
+    assistsTable: $("#assistsTable"),
+    ratingsGrid: $("#ratingsGrid"),
+    favoritesList: $("#favoritesList"),
+    sourceDot: $("#sourceDot"),
+    sourceLabel: $("#sourceLabel"),
+    statusTitle: $("#statusTitle"),
+    statusText: $("#statusText"),
+    lastUpdated: $("#lastUpdated"),
+    timezoneLabel: $("#timezoneLabel"),
+    refreshButton: $("#refreshButton"),
+    installButton: $("#installButton"),
+    themeButton: $("#themeButton"),
+    themeLabel: $("#themeLabel"),
+    themeIcon: $("#themeIcon"),
+    toast: $("#toast"),
+    matchDialog: $("#matchDialog"),
+    matchDialogContent: $("#matchDialogContent"),
+    aboutDialog: $("#aboutDialog")
+  };
 
-      <nav class="side-nav" aria-label="Разделы">
-        <button class="nav-item active" type="button" data-route="home">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20H5a1 1 0 0 1-1-1z"/><path d="M9 20v-6h6v6"/></svg></span>
-          <span>Сегодня</span>
-        </button>
-        <button class="nav-item" type="button" data-route="schedule">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4v3M19 4v3M4 9h16M5 6h14a1 1 0 0 1 1 1v13H4V7a1 1 0 0 1 1-1Z"/><path d="M8 13h3v3H8zM14 13h3v3h-3z"/></svg></span>
-          <span>Матчи</span>
-        </button>
-        <button class="nav-item" type="button" data-route="standings">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V11h4v9M10 20V5h4v15M16 20v-7h4v7"/></svg></span>
-          <span>Таблицы</span>
-        </button>
-        <button class="nav-item" type="button" data-route="stats">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M6 20v-2a6 6 0 0 1 12 0v2M5 5l2 1M19 5l-2 1"/></svg></span>
-          <span>Статистика</span>
-        </button>
-        <button class="nav-item" type="button" data-route="favorites">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/></svg></span>
-          <span>Избранное</span>
-        </button>
-      </nav>
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
 
-      <div class="sidebar-bottom">
-        <button id="themeButton" class="soft-button" type="button" aria-label="Сменить тему">
-          <span id="themeIcon" aria-hidden="true">◐</span>
-          <span id="themeLabel">Системная</span>
-        </button>
-        <div class="source-mini">
-          <span id="sourceDot" class="source-dot"></span>
-          <span id="sourceLabel">Подключение…</span>
+  function safeNumber(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  function dateKey(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+    const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${map.year}-${map.month}-${map.day}`;
+  }
+
+  function parseDateKey(key) {
+    const [year, month, day] = key.split("-").map(Number);
+    return new Date(year, month - 1, day, 12, 0, 0);
+  }
+
+  function addDays(date, amount) {
+    const next = new Date(date);
+    next.setDate(next.getDate() + amount);
+    return next;
+  }
+
+  function formatTime(iso) {
+    return new Intl.DateTimeFormat(config.locale || "ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(new Date(iso));
+  }
+
+  function formatDateTitle(key) {
+    return new Intl.DateTimeFormat(config.locale || "ru-RU", {
+      weekday: "long",
+      day: "numeric",
+      month: "long"
+    }).format(parseDateKey(key));
+  }
+
+  function formatShortDate(key) {
+    const parts = new Intl.DateTimeFormat(config.locale || "ru-RU", {
+      weekday: "short",
+      day: "numeric",
+      month: "short"
+    }).formatToParts(parseDateKey(key));
+    const weekday = parts.find((part) => part.type === "weekday")?.value.replace(".", "") || "";
+    const day = parts.find((part) => part.type === "day")?.value || "";
+    const month = parts.find((part) => part.type === "month")?.value.replace(".", "") || "";
+    return { weekday, day, month };
+  }
+
+  function statusLabel(match) {
+    if (match.status === "live") return `${safeNumber(match.minute)}′`;
+    if (match.status === "finished") return "Завершён";
+    if (match.status === "postponed") return "Перенесён";
+    return formatTime(match.startingAt);
+  }
+
+  function statusSecondary(match) {
+    if (match.status === "live") return "В эфире";
+    if (match.status === "finished") return "Итог";
+    if (match.status === "postponed") return "Новая дата позже";
+    return "По местному времени";
+  }
+
+  function scoreValue(value) {
+    return value === null || value === undefined ? "—" : escapeHtml(value);
+  }
+
+  function isToday(key) {
+    return key === dateKey(new Date());
+  }
+
+  function matchesForDate(key) {
+    return state.data.matches
+      .filter((match) => dateKey(match.startingAt) === key)
+      .sort((a, b) => new Date(a.startingAt) - new Date(b.startingAt));
+  }
+
+  function getAvailableDateRange() {
+    const matchDates = state.data.matches.map((match) => parseDateKey(dateKey(match.startingAt)));
+    const today = new Date();
+    if (!matchDates.length) return Array.from({ length: 9 }, (_, index) => addDays(today, index - 4));
+
+    const min = new Date(Math.min(...matchDates.map(Number)));
+    const max = new Date(Math.max(...matchDates.map(Number)));
+    const start = addDays(min, -2);
+    const end = addDays(max, 2);
+    const dates = [];
+    for (let cursor = start; cursor <= end; cursor = addDays(cursor, 1)) dates.push(new Date(cursor));
+    return dates;
+  }
+
+  function pickInitialDate() {
+    const todayKey = dateKey(new Date());
+    if (matchesForDate(todayKey).length) return todayKey;
+    const keys = [...new Set(state.data.matches.map((match) => dateKey(match.startingAt)))];
+    if (!keys.length) return todayKey;
+    return keys.sort((a, b) => Math.abs(parseDateKey(a) - new Date()) - Math.abs(parseDateKey(b) - new Date()))[0];
+  }
+
+  function toast(message) {
+    refs.toast.textContent = message;
+    refs.toast.classList.add("show");
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => refs.toast.classList.remove("show"), 2600);
+  }
+
+  function applyTheme() {
+    refs.html.dataset.theme = state.theme;
+    const labels = { system: "Системная", light: "Светлая", dark: "Тёмная" };
+    const icons = { system: "◐", light: "☀", dark: "☾" };
+    refs.themeLabel.textContent = labels[state.theme];
+    refs.themeIcon.textContent = icons[state.theme];
+    const mobileThemeIcon = $("#mobileThemeIcon");
+    if (mobileThemeIcon) mobileThemeIcon.textContent = icons[state.theme];
+    localStorage.setItem("wc26:theme", state.theme);
+  }
+
+  function cycleTheme() {
+    const order = ["system", "light", "dark"];
+    state.theme = order[(order.indexOf(state.theme) + 1) % order.length];
+    applyTheme();
+    toast(`Тема: ${refs.themeLabel.textContent.toLowerCase()}`);
+  }
+
+  function renderDateRail() {
+    refs.dateRail.innerHTML = getAvailableDateRange().map((date) => {
+      const key = dateKey(date);
+      const formatted = formatShortDate(key);
+      const count = matchesForDate(key).length;
+      const label = count ? `${count} матч${count === 1 ? "" : count < 5 ? "а" : "ей"}` : formatted.month;
+      return `
+        <button class="date-chip ${key === state.selectedDate ? "active" : ""} ${isToday(key) ? "today" : ""}"
+                type="button" data-date="${key}" role="listitem" aria-pressed="${key === state.selectedDate}">
+          <small>${escapeHtml(formatted.weekday)}</small>
+          <strong>${escapeHtml(formatted.day)}</strong>
+          <small>${escapeHtml(label)}</small>
+        </button>`;
+    }).join("");
+
+    refs.selectedDateTitle.textContent = `${formatDateTitle(state.selectedDate).replace(/^./, (char) => char.toUpperCase())}`;
+    requestAnimationFrame(() => $(".date-chip.active", refs.dateRail)?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }));
+  }
+
+  function renderHero() {
+    const matches = matchesForDate(state.selectedDate);
+    const hero = matches.find((match) => match.status === "live")
+      || matches.find((match) => match.status === "upcoming")
+      || matches[0];
+
+    if (!hero) {
+      refs.heroMatch.innerHTML = `
+        <div class="hero-inner">
+          <div class="hero-info">
+            <div class="stage-row"><span class="stage-badge">День без матчей</span></div>
+            <h2 class="hero-title">Сегодня можно перевести дух</h2>
+            <p class="hero-sub">Выберите другую дату в календаре, чтобы посмотреть расписание.</p>
+          </div>
+        </div>`;
+      return;
+    }
+
+    const isLive = hero.status === "live";
+    const mainLabel = isLive ? `${hero.minute}′ · В эфире` : hero.status === "finished" ? "Матч завершён" : `Начало в ${formatTime(hero.startingAt)}`;
+    refs.heroMatch.innerHTML = `
+      <div class="hero-inner">
+        <div class="hero-info">
+          <div class="stage-row">
+            ${isLive ? '<span class="live-badge">Live</span>' : ""}
+            <span class="stage-badge">${escapeHtml(hero.stage)}</span>
+          </div>
+          <h2 class="hero-title">${escapeHtml(hero.home.name)} — ${escapeHtml(hero.away.name)}</h2>
+          <p class="hero-sub">${escapeHtml(mainLabel)} · ${escapeHtml(hero.venue)} · ${escapeHtml(hero.city || "")}</p>
+          <div class="hero-actions">
+            <button class="primary-button" type="button" data-open-match="${escapeHtml(hero.id)}">Матч-центр</button>
+            <button class="secondary-button" type="button" data-favorite="${escapeHtml(hero.id)}">${state.favorites.has(hero.id) ? "★ В избранном" : "☆ В избранное"}</button>
+          </div>
+        </div>
+        <div class="hero-score" aria-label="Счёт матча">
+          <div class="hero-team">
+            <span class="flag-bubble">${escapeHtml(hero.home.flag)}</span>
+            <span class="hero-team-name"><strong>${escapeHtml(hero.home.name)}</strong><small>${escapeHtml(hero.home.short)}</small></span>
+            <span class="hero-goals">${scoreValue(hero.home.score)}</span>
+          </div>
+          <div class="hero-divider"></div>
+          <div class="hero-team">
+            <span class="flag-bubble">${escapeHtml(hero.away.flag)}</span>
+            <span class="hero-team-name"><strong>${escapeHtml(hero.away.name)}</strong><small>${escapeHtml(hero.away.short)}</small></span>
+            <span class="hero-goals">${scoreValue(hero.away.score)}</span>
+          </div>
+          <div class="hero-clock">${escapeHtml(statusSecondary(hero))}</div>
+        </div>
+      </div>`;
+  }
+
+  function matchCard(match) {
+    const favorite = state.favorites.has(match.id);
+    return `
+      <article class="match-card ${match.status === "live" ? "live" : ""}" data-open-match="${escapeHtml(match.id)}" tabindex="0" role="button" aria-label="Открыть матч ${escapeHtml(match.home.name)} — ${escapeHtml(match.away.name)}">
+        <div class="match-time">
+          <strong>${escapeHtml(statusLabel(match))}</strong>
+          <small>${escapeHtml(statusSecondary(match))}</small>
+        </div>
+        <div class="match-teams">
+          <div class="match-team"><span class="flag">${escapeHtml(match.home.flag)}</span><strong>${escapeHtml(match.home.name)}</strong><span class="score">${scoreValue(match.home.score)}</span></div>
+          <div class="match-team"><span class="flag">${escapeHtml(match.away.flag)}</span><strong>${escapeHtml(match.away.name)}</strong><span class="score">${scoreValue(match.away.score)}</span></div>
+        </div>
+        <div class="match-meta">
+          <button class="favorite-button ${favorite ? "active" : ""}" type="button" data-favorite="${escapeHtml(match.id)}" aria-label="${favorite ? "Убрать из избранного" : "Добавить в избранное"}">${favorite ? "★" : "☆"}</button>
+          <small>${escapeHtml(match.stage)}<br>${escapeHtml(match.city || "")}</small>
+        </div>
+      </article>`;
+  }
+
+  function renderMatchList() {
+    const matches = matchesForDate(state.selectedDate);
+    refs.matchCountBadge.textContent = matches.length;
+    refs.matchList.innerHTML = matches.length
+      ? matches.map(matchCard).join("")
+      : '<div class="empty-state">На выбранную дату матчей нет.</div>';
+  }
+
+  function renderSideCards() {
+    const groups = (state.data.standings || []).slice(0, 5);
+    refs.groupLeaders.innerHTML = groups.map((group) => {
+      const leader = [...group.teams].sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf)[0];
+      return `
+        <div class="leader-row">
+          <span class="group-pill">${escapeHtml(group.group)}</span>
+          <span class="leader-copy"><strong>${escapeHtml(leader.flag)} ${escapeHtml(leader.name)}</strong><small>${leader.played} игр · ${leader.gf}:${leader.ga}</small></span>
+          <span class="points">${leader.points}</span>
+        </div>`;
+    }).join("");
+
+    refs.topScorersMini.innerHTML = (state.data.leaders?.scorers || []).slice(0, 4).map((player) => `
+      <div class="scorer-row">
+        <span class="group-pill">${escapeHtml(player.rank)}</span>
+        <span class="scorer-copy"><strong>${escapeHtml(player.flag)} ${escapeHtml(player.name)}</strong><small>${escapeHtml(player.team)}</small></span>
+        <span class="metric">${safeNumber(player.value)}</span>
+      </div>`).join("");
+  }
+
+  function renderSchedule() {
+    const filtered = state.data.matches.filter((match) => state.scheduleFilter === "all" || match.status === state.scheduleFilter);
+    const grouped = filtered.reduce((acc, match) => {
+      const key = dateKey(match.startingAt);
+      (acc[key] ||= []).push(match);
+      return acc;
+    }, {});
+
+    refs.fullSchedule.innerHTML = Object.keys(grouped).sort().map((key) => `
+      <section class="schedule-day">
+        <h3>${escapeHtml(formatDateTitle(key).replace(/^./, (char) => char.toUpperCase()))}</h3>
+        <div class="schedule-day-grid">${grouped[key].sort((a,b) => new Date(a.startingAt)-new Date(b.startingAt)).map(matchCard).join("")}</div>
+      </section>`).join("") || '<div class="empty-state">Нет матчей для выбранного фильтра.</div>';
+  }
+
+  function formDots(form = []) {
+    return `<span class="form-dots">${form.slice(-5).map((result) => `<i class="form-dot ${result.toLowerCase()}">${escapeHtml(result)}</i>`).join("")}</span>`;
+  }
+
+  function renderStandings() {
+    refs.standingsGrid.innerHTML = (state.data.standings || []).map((group) => `
+      <section class="standings-card glass">
+        <div class="standings-title"><h3>Группа ${escapeHtml(group.group)}</h3><span class="stage-badge">${group.teams.reduce((sum, team) => sum + safeNumber(team.played), 0)} игр</span></div>
+        <div class="table-wrap">
+          <table class="standings-table">
+            <thead><tr><th>#</th><th>Команда</th><th>И</th><th>В</th><th>Н</th><th>П</th><th>М</th><th>РМ</th><th>Форма</th><th>О</th></tr></thead>
+            <tbody>
+              ${group.teams.map((team) => `
+                <tr>
+                  <td class="position ${team.pos <= 2 ? "q" : team.pos === 3 ? "p" : ""}">${team.pos}</td>
+                  <td><span class="team-cell"><span>${escapeHtml(team.flag)}</span><strong>${escapeHtml(team.name)}</strong></span></td>
+                  <td>${team.played}</td><td>${team.won}</td><td>${team.drawn}</td><td>${team.lost}</td>
+                  <td>${team.gf}:${team.ga}</td><td>${team.gd > 0 ? "+" : ""}${team.gd}</td><td>${formDots(team.form)}</td><td><strong>${team.points}</strong></td>
+                </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </section>`).join("");
+  }
+
+  function rankingRows(items = []) {
+    return items.map((player, index) => `
+      <div class="ranking-row">
+        <span class="rank-number">${player.rank || index + 1}</span>
+        <span class="player-avatar">${escapeHtml(player.flag)}</span>
+        <span class="player-copy"><strong>${escapeHtml(player.name)}</strong><small>${escapeHtml(player.team)}</small></span>
+        <span class="metric-block"><strong>${safeNumber(player.value)}</strong><small>${escapeHtml(player.label || "")}</small></span>
+      </div>`).join("");
+  }
+
+  function renderStats() {
+    refs.scorersTable.innerHTML = rankingRows(state.data.leaders?.scorers);
+    refs.assistsTable.innerHTML = rankingRows(state.data.leaders?.assists);
+    refs.ratingsGrid.innerHTML = (state.data.leaders?.ratings || []).map((player) => `
+      <article class="rating-card">
+        <div class="rating-top"><span class="player-avatar">${escapeHtml(player.flag)}</span><span class="rating-value">${safeNumber(player.rating).toFixed(1)}</span></div>
+        <div><strong>${escapeHtml(player.name)}</strong><br><small>${escapeHtml(player.team)} · ${safeNumber(player.matches)} матч.</small></div>
+        <div class="rating-bar"><span style="width:${Math.min(100, safeNumber(player.rating) * 10)}%"></span></div>
+      </article>`).join("");
+  }
+
+  function renderFavorites() {
+    const items = state.data.matches.filter((match) => state.favorites.has(match.id));
+    refs.favoritesList.innerHTML = items.length
+      ? items.map(matchCard).join("")
+      : '<div class="empty-state">Пока ничего не добавлено.</div>';
+  }
+
+  function updateSourceStatus() {
+    const live = state.source === "live";
+    refs.sourceDot.classList.toggle("live", live);
+    refs.sourceLabel.textContent = live ? (state.data.provider || "Live API") : "Демо-данные";
+    refs.statusTitle.textContent = live ? "Данные обновляются автоматически" : "Демо-режим интерфейса";
+    refs.statusText.textContent = live
+      ? `Счёт, таблицы и статистика синхронизированы с сервером данных${state.data.freshness ? ` · частота ${state.data.freshness}` : ""}.`
+      : "Подключите Worker и спортивный API для реальных результатов";
+    refs.lastUpdated.textContent = state.data.lastUpdated
+      ? `Обновлено ${new Intl.DateTimeFormat(config.locale || "ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(state.data.lastUpdated))}`
+      : "Время обновления неизвестно";
+    refs.timezoneLabel.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone || "Локальное время";
+  }
+
+  function renderAll() {
+    renderDateRail();
+    renderHero();
+    renderMatchList();
+    renderSideCards();
+    renderSchedule();
+    renderStandings();
+    renderStats();
+    renderFavorites();
+    updateSourceStatus();
+  }
+
+  function routeMeta(route) {
+    return {
+      home: ["Сегодня", "Чемпионат мира 2026"],
+      schedule: ["Матчи", "Расписание и результаты"],
+      standings: ["Таблицы", "Групповой этап"],
+      stats: ["Статистика", "Игроки и лидеры"],
+      favorites: ["Избранное", "Ваш персональный центр"]
+    }[route] || ["Сегодня", "Чемпионат мира 2026"];
+  }
+
+  function setRoute(route) {
+    state.route = route;
+    $$(".view").forEach((view) => view.classList.toggle("active", view.dataset.view === route));
+    $$('[data-route]').forEach((button) => button.classList.toggle("active", button.dataset.route === route));
+    const [title, eyebrow] = routeMeta(route);
+    refs.pageTitle.textContent = title;
+    refs.topEyebrow.textContent = eyebrow;
+    refs.dateRailSection.hidden = !["home", "schedule"].includes(route);
+    if (route === "favorites") renderFavorites();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function toggleFavorite(id) {
+    if (state.favorites.has(id)) {
+      state.favorites.delete(id);
+      toast("Удалено из избранного");
+    } else {
+      state.favorites.add(id);
+      toast("Добавлено в избранное");
+    }
+    localStorage.setItem("wc26:favorites", JSON.stringify([...state.favorites]));
+    renderHero();
+    renderMatchList();
+    renderSchedule();
+    renderFavorites();
+  }
+
+  function statName(key) {
+    return {
+      possession: "Владение мячом, %",
+      shots: "Удары",
+      shotsOnTarget: "Удары в створ",
+      corners: "Угловые",
+      fouls: "Фолы",
+      passes: "Передачи"
+    }[key] || key;
+  }
+
+  function renderOverviewTab(match) {
+    if (!match.events?.length) return '<div class="empty-state">События появятся после начала матча.</div>';
+    return `<div class="timeline">${match.events.map((event) => `
+      <div class="event-row"><span class="event-time">${safeNumber(event.minute)}′</span><span>${escapeHtml(event.icon)}</span><strong>${escapeHtml(event.text)}</strong></div>`).join("")}</div>`;
+  }
+
+  function renderStatsTab(match) {
+    const entries = Object.entries(match.stats || {});
+    if (!entries.length) return '<div class="empty-state">Статистика пока недоступна.</div>';
+    return `<div class="stat-bars">${entries.map(([key, values]) => {
+      const left = safeNumber(values?.[0]);
+      const right = safeNumber(values?.[1]);
+      const total = left + right || 1;
+      return `
+        <div class="stat-line">
+          <span class="stat-label">${escapeHtml(statName(key))}</span>
+          <strong>${left}</strong>
+          <span class="dual-bar"><span style="width:${left / total * 100}%"></span><span style="width:${right / total * 100}%"></span></span>
+          <strong>${right}</strong>
+        </div>`;
+    }).join("")}</div>`;
+  }
+
+  function lineupList(title, flag, players = []) {
+    return `<div class="lineup-list"><h4>${escapeHtml(flag)} ${escapeHtml(title)}</h4>${players.length
+      ? players.map((player, index) => `<div class="lineup-player"><span><small>${index + 1}</small> ${escapeHtml(player)}</span><small>${index < 1 ? "ВР" : index < 3 ? "ЗЩ" : index < 5 ? "ПЗ" : "НП"}</small></div>`).join("")
+      : '<div class="empty-state">Состав будет опубликован за 60–75 минут до игры.</div>'}</div>`;
+  }
+
+  function renderLineupsTab(match) {
+    return `<div class="lineup-grid">${lineupList(match.home.name, match.home.flag, match.lineups?.home)}${lineupList(match.away.name, match.away.flag, match.lineups?.away)}</div>`;
+  }
+
+  function renderH2HTab(match) {
+    const h2h = match.h2h || { homeWins: 0, draws: 0, awayWins: 0 };
+    return `<div class="h2h-grid">
+      <div class="h2h-stat"><strong>${safeNumber(h2h.homeWins)}</strong><small>Победы ${escapeHtml(match.home.short)}</small></div>
+      <div class="h2h-stat"><strong>${safeNumber(h2h.draws)}</strong><small>Ничьи</small></div>
+      <div class="h2h-stat"><strong>${safeNumber(h2h.awayWins)}</strong><small>Победы ${escapeHtml(match.away.short)}</small></div>
+    </div>`;
+  }
+
+  async function openMatch(id) {
+    const match = state.data.matches.find((item) => item.id === id);
+    if (!match) return;
+    state.activeMatch = match;
+    state.activeDialogTab = "overview";
+    renderMatchDialog();
+    refs.matchDialog.showModal();
+
+    if (state.source === "live" && config.apiBaseUrl && /^\d+$/.test(String(id))) {
+      try {
+        const base = config.apiBaseUrl.replace(/\/$/, "");
+        const payload = await fetchJson(`${base}/api/match?id=${encodeURIComponent(id)}`, config.requestTimeoutMs);
+        if (payload?.match) {
+          state.activeMatch = { ...match, ...payload.match };
+          const index = state.data.matches.findIndex((item) => item.id === id);
+          if (index >= 0) state.data.matches[index] = state.activeMatch;
+          renderMatchDialog();
+          renderHero();
+          renderMatchList();
+        }
+      } catch (error) {
+        console.warn("Не удалось загрузить расширенную статистику матча", error);
+      }
+    }
+  }
+
+  function renderMatchDialog() {
+    const match = state.activeMatch;
+    if (!match) return;
+    const tabContent = {
+      overview: renderOverviewTab(match),
+      stats: renderStatsTab(match),
+      lineups: renderLineupsTab(match),
+      h2h: renderH2HTab(match)
+    }[state.activeDialogTab];
+
+    refs.matchDialogContent.innerHTML = `
+      <div class="dialog-match-head">
+        <p class="eyebrow">${escapeHtml(match.stage)} · ${escapeHtml(match.venue)}</p>
+        <h2>${escapeHtml(statusLabel(match))}</h2>
+        <p class="hero-sub">${escapeHtml(formatDateTitle(dateKey(match.startingAt)))} · ${escapeHtml(formatTime(match.startingAt))}</p>
+        <div class="dialog-scoreboard">
+          <div class="dialog-team"><span class="flag-bubble">${escapeHtml(match.home.flag)}</span><strong>${escapeHtml(match.home.name)}</strong></div>
+          <div class="dialog-score">${scoreValue(match.home.score)} : ${scoreValue(match.away.score)}</div>
+          <div class="dialog-team"><span class="flag-bubble">${escapeHtml(match.away.flag)}</span><strong>${escapeHtml(match.away.name)}</strong></div>
         </div>
       </div>
-    </aside>
+      <div class="dialog-tabs" role="tablist">
+        <button class="dialog-tab ${state.activeDialogTab === "overview" ? "active" : ""}" type="button" data-dialog-tab="overview">События</button>
+        <button class="dialog-tab ${state.activeDialogTab === "stats" ? "active" : ""}" type="button" data-dialog-tab="stats">Статистика</button>
+        <button class="dialog-tab ${state.activeDialogTab === "lineups" ? "active" : ""}" type="button" data-dialog-tab="lineups">Составы</button>
+        <button class="dialog-tab ${state.activeDialogTab === "h2h" ? "active" : ""}" type="button" data-dialog-tab="h2h">Личные встречи</button>
+      </div>
+      <div class="dialog-body">${tabContent}</div>`;
+  }
 
-    <main class="main-content">
-      <header class="topbar glass">
-        <div>
-          <p class="eyebrow" id="topEyebrow">Чемпионат мира 2026</p>
-          <h1 id="pageTitle">Сегодня</h1>
-        </div>
-        <div class="top-actions">
-          <button id="mobileThemeButton" class="icon-button mobile-theme-button" type="button" aria-label="Сменить тему" title="Сменить тему"><span id="mobileThemeIcon" aria-hidden="true">◐</span></button>
-          <button id="refreshButton" class="icon-button" type="button" aria-label="Обновить данные" title="Обновить">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.35 5.65M20 4v7h-7"/></svg>
-          </button>
-          <button id="installButton" class="install-button" type="button" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
-            <span>Установить</span>
-          </button>
-          <button id="profileButton" class="avatar" type="button" aria-label="О приложении">26</button>
-        </div>
-      </header>
+  async function fetchJson(url, timeoutMs = 9000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
-      <section id="statusStrip" class="status-strip glass" aria-live="polite">
-        <div class="status-primary">
-          <span class="live-pulse" aria-hidden="true"></span>
-          <strong id="statusTitle">Загрузка матчей</strong>
-          <span id="statusText">Подготавливаем центр турнира…</span>
-        </div>
-        <div class="status-meta">
-          <span id="lastUpdated">—</span>
-          <span class="separator">•</span>
-          <span id="timezoneLabel">Локальное время</span>
-        </div>
-      </section>
+  async function loadData({ silent = false } = {}) {
+    if (!silent) refs.refreshButton.classList.add("loading");
+    try {
+      if (config.mode === "live" && config.apiBaseUrl) {
+        const base = config.apiBaseUrl.replace(/\/$/, "");
+        const snapshot = await fetchJson(`${base}/api/snapshot?date=${encodeURIComponent(state.selectedDate || dateKey(new Date()))}`, config.requestTimeoutMs);
+        if (!snapshot?.matches || !Array.isArray(snapshot.matches)) throw new Error("Некорректный формат live API");
+        state.data = {
+          ...demoData,
+          ...snapshot,
+          leaders: { ...demoData.leaders, ...(snapshot.leaders || {}) }
+        };
+        state.source = "live";
+        state.lastError = null;
+      } else {
+        state.data = typeof structuredClone === "function" ? structuredClone(demoData) : JSON.parse(JSON.stringify(demoData));
+        state.source = "demo";
+      }
+      if (!state.selectedDate) state.selectedDate = pickInitialDate();
+      renderAll();
+      if (!silent) toast(state.source === "live" ? "Live-данные обновлены" : "Демо-данные обновлены");
+    } catch (error) {
+      console.error(error);
+      state.lastError = error;
+      state.data = demoData;
+      state.source = "demo";
+      if (!state.selectedDate) state.selectedDate = pickInitialDate();
+      renderAll();
+      toast("Live API недоступен — включён демо-режим");
+    } finally {
+      refs.refreshButton.classList.remove("loading");
+    }
+  }
 
-      <section id="dateRailSection" class="date-section" aria-label="Выбор даты">
-        <div class="section-heading compact-heading">
-          <div>
-            <p class="eyebrow">Календарь</p>
-            <h2 id="selectedDateTitle">Матчи дня</h2>
-          </div>
-          <button id="todayButton" class="text-button" type="button">Сегодня</button>
-        </div>
-        <div class="date-rail-wrap">
-          <button id="datePrev" class="rail-arrow" type="button" aria-label="Предыдущие даты">‹</button>
-          <div id="dateRail" class="date-rail" role="list"></div>
-          <button id="dateNext" class="rail-arrow" type="button" aria-label="Следующие даты">›</button>
-        </div>
-      </section>
+  function bindEvents() {
+    document.addEventListener("click", (event) => {
+      const routeButton = event.target.closest("[data-route]");
+      if (routeButton) {
+        event.preventDefault();
+        setRoute(routeButton.dataset.route);
+        return;
+      }
 
-      <section id="homeView" class="view active" data-view="home">
-        <div id="heroMatch" class="hero-card glass"></div>
+      const dateButton = event.target.closest("[data-date]");
+      if (dateButton) {
+        state.selectedDate = dateButton.dataset.date;
+        renderDateRail();
+        renderHero();
+        renderMatchList();
+        return;
+      }
 
-        <div class="dashboard-grid">
-          <section class="panel glass match-list-panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Расписание и результаты</p>
-                <h2>Все матчи дня</h2>
-              </div>
-              <span id="matchCountBadge" class="count-badge">0</span>
-            </div>
-            <div id="matchList" class="match-list"></div>
-          </section>
+      const favoriteButton = event.target.closest("[data-favorite]");
+      if (favoriteButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFavorite(favoriteButton.dataset.favorite);
+        return;
+      }
 
-          <aside class="right-column">
-            <section class="panel glass">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">Турнир</p>
-                  <h2>Лидеры групп</h2>
-                </div>
-                <button class="text-button" type="button" data-route="standings">Все</button>
-              </div>
-              <div id="groupLeaders" class="leader-list"></div>
-            </section>
+      const matchButton = event.target.closest("[data-open-match]");
+      if (matchButton) {
+        openMatch(matchButton.dataset.openMatch);
+        return;
+      }
 
-            <section class="panel glass">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">Форма</p>
-                  <h2>Гонка бомбардиров</h2>
-                </div>
-                <button class="text-button" type="button" data-route="stats">Подробнее</button>
-              </div>
-              <div id="topScorersMini" class="scorer-list"></div>
-            </section>
-          </aside>
-        </div>
-      </section>
+      const filterButton = event.target.closest("[data-filter]");
+      if (filterButton) {
+        state.scheduleFilter = filterButton.dataset.filter;
+        $$("[data-filter]").forEach((button) => button.classList.toggle("active", button === filterButton));
+        renderSchedule();
+        return;
+      }
 
-      <section id="scheduleView" class="view" data-view="schedule">
-        <section class="panel glass large-panel">
-          <div class="section-heading wrap-heading">
-            <div>
-              <p class="eyebrow">Полное расписание</p>
-              <h2>Матчи чемпионата</h2>
-            </div>
-            <div class="segmented" role="group" aria-label="Фильтр матчей">
-              <button class="segment active" type="button" data-filter="all">Все</button>
-              <button class="segment" type="button" data-filter="live">В эфире</button>
-              <button class="segment" type="button" data-filter="upcoming">Будущие</button>
-              <button class="segment" type="button" data-filter="finished">Завершённые</button>
-            </div>
-          </div>
-          <div id="fullSchedule" class="schedule-groups"></div>
-        </section>
-      </section>
+      const tabButton = event.target.closest("[data-dialog-tab]");
+      if (tabButton) {
+        state.activeDialogTab = tabButton.dataset.dialogTab;
+        renderMatchDialog();
+      }
 
-      <section id="standingsView" class="view" data-view="standings">
-        <div class="section-heading page-section-heading">
-          <div>
-            <p class="eyebrow">Групповой этап</p>
-            <h2>Турнирные таблицы</h2>
-          </div>
-          <div class="legend-inline"><span><i class="legend-dot qualify"></i>Выход</span><span><i class="legend-dot playoff"></i>Лучшие третьи</span></div>
-        </div>
-        <div id="standingsGrid" class="standings-grid"></div>
-      </section>
+      if (event.target.closest("[data-close-about]")) refs.aboutDialog.close();
+    });
 
-      <section id="statsView" class="view" data-view="stats">
-        <div class="stats-layout">
-          <section class="panel glass">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Индивидуальная статистика</p>
-                <h2>Бомбардиры</h2>
-              </div>
-            </div>
-            <div id="scorersTable" class="ranking-table"></div>
-          </section>
-          <section class="panel glass">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Создание моментов</p>
-                <h2>Ассистенты</h2>
-              </div>
-            </div>
-            <div id="assistsTable" class="ranking-table"></div>
-          </section>
-          <section class="panel glass wide-stat-card">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Лучшие выступления</p>
-                <h2>Оценки игроков</h2>
-              </div>
-              <span class="hint-chip">минимум 2 матча</span>
-            </div>
-            <div id="ratingsGrid" class="ratings-grid"></div>
-          </section>
-        </div>
-      </section>
+    document.addEventListener("keydown", (event) => {
+      if ((event.key === "Enter" || event.key === " ") && event.target.matches(".match-card")) {
+        event.preventDefault();
+        openMatch(event.target.dataset.openMatch);
+      }
+    });
 
-      <section id="favoritesView" class="view" data-view="favorites">
-        <section class="panel glass empty-favorites">
-          <div class="empty-icon" aria-hidden="true">★</div>
-          <h2>Избранные команды и матчи</h2>
-          <p>Нажимайте на звезду в карточке матча. Выбор сохраняется на этом устройстве и работает офлайн.</p>
-          <div id="favoritesList" class="match-list favorite-match-list"></div>
-        </section>
-      </section>
+    $("#todayButton").addEventListener("click", () => {
+      const today = dateKey(new Date());
+      state.selectedDate = matchesForDate(today).length ? today : pickInitialDate();
+      renderDateRail();
+      renderHero();
+      renderMatchList();
+    });
 
-      <footer class="footer">
-        <p>Неофициальный информационный проект. Не связан с FIFA и организаторами турнира.</p>
-        <p>Данные в демо-режиме предназначены для демонстрации интерфейса.</p>
-      </footer>
-    </main>
-  </div>
+    $("#datePrev").addEventListener("click", () => refs.dateRail.scrollBy({ left: -360, behavior: "smooth" }));
+    $("#dateNext").addEventListener("click", () => refs.dateRail.scrollBy({ left: 360, behavior: "smooth" }));
+    refs.refreshButton.addEventListener("click", () => loadData());
+    refs.themeButton.addEventListener("click", cycleTheme);
+    $("#mobileThemeButton")?.addEventListener("click", cycleTheme);
+    $("#dialogClose").addEventListener("click", () => refs.matchDialog.close());
+    $("#profileButton").addEventListener("click", () => refs.aboutDialog.showModal());
 
-  <nav class="bottom-nav glass" aria-label="Мобильная навигация">
-    <button class="bottom-nav-item active" type="button" data-route="home"><span>⌂</span><small>Сегодня</small></button>
-    <button class="bottom-nav-item" type="button" data-route="schedule"><span>▦</span><small>Матчи</small></button>
-    <button class="bottom-nav-item" type="button" data-route="standings"><span>▥</span><small>Таблицы</small></button>
-    <button class="bottom-nav-item" type="button" data-route="stats"><span>◉</span><small>Статистика</small></button>
-    <button class="bottom-nav-item" type="button" data-route="favorites"><span>★</span><small>Избранное</small></button>
-  </nav>
+    refs.matchDialog.addEventListener("click", (event) => {
+      const rect = refs.matchDialog.getBoundingClientRect();
+      const outside = event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+      if (outside) refs.matchDialog.close();
+    });
 
-  <dialog id="matchDialog" class="match-dialog">
-    <div class="dialog-shell glass">
-      <button id="dialogClose" class="dialog-close" type="button" aria-label="Закрыть">×</button>
-      <div id="matchDialogContent"></div>
-    </div>
-  </dialog>
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      state.deferredInstallPrompt = event;
+      refs.installButton.hidden = false;
+    });
 
-  <dialog id="aboutDialog" class="about-dialog">
-    <div class="dialog-shell glass small-dialog">
-      <button class="dialog-close" type="button" data-close-about aria-label="Закрыть">×</button>
-      <div class="about-mark">26</div>
-      <p class="eyebrow">World Cup 26 Live Center</p>
-      <h2>Приложение для болельщиков</h2>
-      <p>Расписание по локальному времени, live-счёт, таблицы, составы, события, личные встречи и оценки игроков — в одном адаптивном PWA.</p>
-      <div class="about-tags"><span>Liquid Glass</span><span>PWA</span><span>Offline shell</span><span>Live API ready</span></div>
-      <button class="primary-button" type="button" data-close-about>Понятно</button>
-    </div>
-  </dialog>
+    refs.installButton.addEventListener("click", async () => {
+      if (state.deferredInstallPrompt) {
+        state.deferredInstallPrompt.prompt();
+        await state.deferredInstallPrompt.userChoice;
+        state.deferredInstallPrompt = null;
+        refs.installButton.hidden = true;
+      } else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+        toast("В Safari нажмите «Поделиться» → «На экран Домой»");
+      } else {
+        toast("Откройте меню браузера и выберите «Установить приложение»");
+      }
+    });
 
-  <div id="toast" class="toast glass" role="status" aria-live="polite"></div>
+    if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone) refs.installButton.hidden = false;
+  }
 
-  <script src="./config.js"></script>
-  <script src="./demo-data.js"></script>
-  <script src="./app.js" defer></script>
-</body>
-</html>
+  function setupPwa() {
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(console.warn));
+    }
+  }
+
+  function startAutoRefresh() {
+    if (config.mode !== "live") return;
+    setInterval(() => loadData({ silent: true }), Math.max(10000, config.refreshIntervalMs || 15000));
+  }
+
+  async function init() {
+    applyTheme();
+    bindEvents();
+    setupPwa();
+    await loadData({ silent: true });
+    setRoute("home");
+    startAutoRefresh();
+  }
+
+  init();
+})();

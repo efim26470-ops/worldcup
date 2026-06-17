@@ -1,0 +1,140 @@
+# World Cup 26 Live Center
+
+Адаптивный PWA-сайт в стиле Apple Sports / Liquid Glass для расписания, live-счёта, таблиц и статистики чемпионата мира 2026.
+
+## Что уже работает
+
+- адаптивный интерфейс для Windows, macOS, iPhone и Android;
+- светлая, тёмная и системная темы;
+- автоматический выбор матчей по локальной дате пользователя;
+- календарь матчей, live-карточки, результаты и избранное;
+- групповые таблицы, бомбардиры, ассисты и рейтинги;
+- матч-центр: события, статистика, составы и личные встречи;
+- PWA: manifest, Service Worker, офлайн-оболочка, Apple Touch Icon;
+- безопасный Cloudflare Worker для API-Football;
+- демо-режим, если Worker или API временно недоступны.
+
+## Выбранный бесплатный API
+
+Проект подключён к **API-Football / API-Sports**:
+
+- World Cup: `league=1`;
+- сезон: `season=2026`;
+- бесплатный тариф: 100 запросов в сутки;
+- доступны расписание, live-счёт, таблицы, события, составы, статистика, H2H, бомбардиры и ассисты.
+
+Чтобы не раскрывать ключ в публичном GitHub Pages и не израсходовать лимит, запросы идут через Cloudflare Worker с раздельным кэшированием:
+
+- матчи во время игрового окна: примерно раз в 5–8 минут;
+- таблицы: примерно раз в час;
+- лидеры: примерно раз в 6 часов;
+- детали матча кэшируются отдельно.
+
+На бесплатном тарифе это **near-live**, а не профессиональный секундный live-feed. Для обновления каждые 15–60 секунд потребуется платный лимит.
+
+## Быстрый запуск сайта локально
+
+```bash
+python -m http.server 8080
+```
+
+Откройте `http://localhost:8080`.
+
+## 1. Получите бесплатный ключ API-Football
+
+1. Зарегистрируйтесь в API-Football / API-Sports.
+2. Выберите бесплатный план `$0`.
+3. Скопируйте API key из Dashboard.
+4. Не вставляйте ключ в `config.js` и не коммитьте его в GitHub.
+
+## 2. Разверните бесплатный Cloudflare Worker
+
+Нужны Node.js и бесплатный аккаунт Cloudflare.
+
+```bash
+cd worker
+npm install
+npx wrangler login
+npm run secret
+npm run deploy
+```
+
+После `npm run secret` введите ключ API-Football. Он сохранится в Cloudflare под именем `API_FOOTBALL_KEY` как секрет.
+
+После `npm run deploy` Cloudflare покажет адрес вида:
+
+```text
+https://wc26-live-api.YOUR-SUBDOMAIN.workers.dev
+```
+
+Проверка Worker:
+
+```text
+https://wc26-live-api.YOUR-SUBDOMAIN.workers.dev/api/health
+```
+
+Ожидаемый ответ содержит `"configured": true`.
+
+## 3. Подключите Worker к сайту
+
+В корневом `config.js` замените только эту строку:
+
+```js
+const WC26_WORKER_URL = "https://wc26-live-api.YOUR-SUBDOMAIN.workers.dev";
+```
+
+на настоящий URL Worker. Режим `live` включится автоматически.
+
+Затем загрузите обновлённые файлы в GitHub и дождитесь публикации Pages.
+
+## 4. Публикация на GitHub Pages
+
+Файлы должны лежать в корне репозитория:
+
+```text
+index.html
+app.js
+config.js
+styles.css
+...
+```
+
+В GitHub откройте:
+
+```text
+Settings → Pages → Deploy from a branch → main → /(root)
+```
+
+## Безопасность
+
+В `worker/wrangler.toml` уже разрешены:
+
+```toml
+ALLOWED_ORIGINS = "https://efim26470-ops.github.io,http://localhost:8080,http://127.0.0.1:8080"
+```
+
+Origin у GitHub Pages указывается без `/worldcup/`, потому что браузер отправляет только схему и домен.
+
+Никогда не добавляйте `API_FOOTBALL_KEY` в репозиторий, HTML, JavaScript фронтенда или GitHub Actions build output.
+
+## Ограничения бесплатного режима
+
+- 100 API-запросов в сутки;
+- live-обновления намеренно кэшируются примерно на 5–8 минут;
+- рейтинг формируется из игроков, попавших в выдачу лидеров по голам/ассистам;
+- некоторые составы и показатели появляются только незадолго до матча или после начала игры;
+- при исчерпании квоты интерфейс автоматически возвращается к демонстрационным данным.
+
+## Структура
+
+```text
+index.html                  интерфейс
+styles.css                  Liquid Glass и адаптивность
+app.js                      навигация, календарь, рендеринг, PWA
+config.js                   URL Cloudflare Worker
+demo-data.js                резервные демонстрационные данные
+manifest.webmanifest        настройки PWA
+service-worker.js           офлайн-кэш
+assets/icons/               иконки PWA и iOS
+worker/                     API-Football proxy для Cloudflare
+```
