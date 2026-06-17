@@ -2,7 +2,7 @@
 'use strict';
 const NATIVE_FETCH=window.fetch.bind(window);
 const CLIENT_CACHE=new Map();
-const BUILD = 'wc26-direct-data-final-v8.0';
+const BUILD = 'wc26-direct-data-final-v9.0';
 const ESPN_SCOREBOARD = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard';
 const ESPN_SUMMARY = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary';
 const ESPN_TEAMS = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/teams';
@@ -14,6 +14,7 @@ const WIKIPEDIA_API = 'https://en.wikipedia.org/w/api.php';
 const WIKIPEDIA_SUMMARY = 'https://en.wikipedia.org/api/rest_v1/page/summary';
 const SPORTSDB = 'https://www.thesportsdb.com/api/v1/json/123';
 const OPEN_TTL = 30 * 86400;
+const MEDIA_TTL = 45 * 86400;
 
 const MEDIA_HOSTS = ['.espncdn.com', '.wikimedia.org', '.wikipedia.org', '.thesportsdb.com', '.sportsdb.com'];
 
@@ -86,7 +87,8 @@ function readMediaPlayers(raw){
     if(!Array.isArray(rows))return[];
     return rows.slice(0,12).map(row=>({
       id:String(row?.id||'').trim(),espnId:String(row?.espnId||'').trim(),name:String(row?.name||'').trim(),
-      team:String(row?.team||'').trim(),countryCode:String(row?.countryCode||'').trim().toLowerCase()
+      team:String(row?.team||'').trim(),countryCode:String(row?.countryCode||'').trim().toLowerCase(),
+      photo:String(row?.photo||'').trim(),photoCandidates:Array.isArray(row?.photoCandidates)?row.photoCandidates.filter(Boolean):[]
     })).filter(row=>row.name);
   }catch{return[];}
 }
@@ -99,20 +101,55 @@ async function buildSnapshot(ctx){
 
 async function buildLeaders(ctx){
   const scoreboard=await fetchScoreboard(ctx);
-  const events=(scoreboard.events||[]).filter(e=>{const t=e.competitions?.[0]?.status?.type||{};return t.completed||String(t.state)==='in';}).slice(-48);
-  const summaries=await mapLimit(events,10,async event=>{const id=String(event.id||event.competitions?.[0]?.id||'');if(!id)return null;try{return await withDeadline(fetchSummary(ctx,id),3500);}catch{return null;}});
+  const events=(scoreboard.events||[]).filter(e=>{const type=e.competitions?.[0]?.status?.type||{};return type.completed||String(type.state)==='in';}).slice(-48);
+  const summaries=await mapLimit(events,14,async event=>{
+    const id=String(event.id||event.competitions?.[0]?.id||'');
+    if(!id)return null;
+    try{return await withDeadline(fetchSummary(ctx,id),3200);}catch{return null;}
+  });
   const accumulator=new Map();
   for(const payload of summaries.filter(Boolean)){
-    const competition=payload.header?.competitions?.[0]; if(!competition) continue;
-    const match=normalizeEspnEvent({id:competition.id,date:competition.date,competitions:[{...competition,details:payload.plays||payload.scoringPlays||competition.details||[]}]});
+    const competition=payload.header?.competitions?.[0];
+    if(!competition)continue;
+    const match=normalizeEspnEvent({id:competition.id,date:competition.date,competitions:[{...competition,details:payload.plays||payload.scoringPlays||competition.details||[]} ]});
+    const rows=extractAllPlayerMatchStats(payload,match);
+    const eventStats=new Map();
+    const eventKey=(id,name,team)=>leaderKey(id,name,team);
     for(const event of match.events||[]){
-      if(event.scoringPlay&&!event.ownGoal) bumpLeader(accumulator,event.playerId,event.playerName,event.teamName,event.photo,'goals',1);
-      if(event.scoringPlay&&event.assistName) bumpLeader(accumulator,event.assistId,event.assistName,event.teamName,event.assistPhoto||espnPhoto(event.assistId),'assists',1);
+      if(event.scoringPlay&&!event.ownGoal&&event.playerName){
+        const key=eventKey(event.playerId,event.playerName,event.teamName);
+        const row=eventStats.get(key)||{goals:0,assists:0,id:event.playerId,name:event.playerName,team:event.teamName,photo:event.photo};
+        row.goals++;eventStats.set(key,row);
+      }
+      if(event.scoringPlay&&event.assistName){
+        const key=eventKey(event.assistId,event.assistName,event.teamName);
+        const row=eventStats.get(key)||{goals:0,assists:0,id:event.assistId,name:event.assistName,team:event.teamName,photo:event.assistPhoto};
+        row.assists++;eventStats.set(key,row);
+      }
     }
-    for(const row of extractAllPlayerMatchStats(payload,match)){
-      const key=leaderKey(row.id,row.name,row.team); const current=accumulator.get(key)||leaderBase(row.id,row.name,row.team,row.photo);
-      current.appearances=(current.appearances||0)+1; current.ratingSum=(current.ratingSum||0)+Number(row.rating||computedRating(row)); current.ratingCount=(current.ratingCount||0)+1;
-      if(!current.photo&&row.photo) current.photo=row.photo; current.photoCandidates=uniqueStrings([...(current.photoCandidates||[]),row.photo,espnPhoto(row.id),espnPhotoLarge(row.id)]); accumulator.set(key,current);
+    const used=new Set();
+    for(const row of rows){
+      const key=leaderKey(row.id,row.name,row.team);
+      const fromEvents=eventStats.get(key)||{goals:0,assists:0};
+      const current=accumulator.get(key)||leaderBase(row.id,row.name,row.team,row.photo);
+      current.goals=(current.goals||0)+Math.max(Number(row.goals||0),Number(fromEvents.goals||0));
+      current.assists=(current.assists||0)+Math.max(Number(row.assists||0),Number(fromEvents.assists||0));
+      current.appearances=(current.appearances||0)+1;
+      current.ratingSum=(current.ratingSum||0)+Number(row.rating||computedRating(row));
+      current.ratingCount=(current.ratingCount||0)+1;
+      if(!current.photo&&row.photo)current.photo=row.photo;
+      current.photoCandidates=uniqueStrings([...(current.photoCandidates||[]),row.photo,espnPhoto(row.id),espnPhotoLarge(row.id)]);
+      accumulator.set(key,current);used.add(key);
+    }
+    for(const [key,row] of eventStats){
+      if(used.has(key))continue;
+      const current=accumulator.get(key)||leaderBase(row.id,row.name,row.team,row.photo);
+      current.goals=(current.goals||0)+Number(row.goals||0);
+      current.assists=(current.assists||0)+Number(row.assists||0);
+      current.appearances=(current.appearances||0)+1;
+      current.ratingSum=(current.ratingSum||0)+Number(computedRating(row));
+      current.ratingCount=(current.ratingCount||0)+1;
+      accumulator.set(key,current);
     }
   }
   const all=[...accumulator.values()];
@@ -126,7 +163,7 @@ async function buildMatch(ctx,id){
   const match=normalizeEspnEvent({id,date:competition.date,competitions:[{...competition,details:payload.plays||payload.scoringPlays||competition.details||[]}]});
   match.lineups=normalizeEspnRosters(payload.rosters||[],match.home.id,match.away.id);
   match.stats=normalizeEspnBoxscore(payload.boxscore,competition.competitors||[],match.home.id,match.away.id)||match.stats;
-  const statRows=extractAllPlayerMatchStats(payload,match); attachRatings(match.lineups,statRows);
+  const statRows=extractAllPlayerMatchStats(payload,match); attachRatings(match.lineups,statRows,match);
   match.h2h=await deriveH2H(ctx,match);
   return{match,provider:'open-data',lastUpdated:new Date().toISOString()};
 }
@@ -145,25 +182,29 @@ async function buildTeam(ctx,query){
   return{team:{...base,...(details?.team||{}),name:base.name,countryCode:base.countryCode||details?.team?.countryCode||''},coach:details?.coach||sportsSquad?.coach||'',formation:'',fifaRank:null,squad,source:uniqueStrings([details?.source,matchSquad?.source,sportsSquad?.source]).join(' + ')||'Open data',updatedAt:new Date().toISOString()};
 }
 
-async function resolvePlayerMediaBatch(ctx,players,defaultTeam='',limit=12){
+async function resolvePlayerMediaBatch(ctx,players,defaultTeam='',limit=30){
   const input=(players||[]).slice(0,limit);
-  return mapLimit(input,4,async row=>resolvePlayerMedia(ctx,{...row,team:row.team||defaultTeam}));
+  return mapLimit(input,6,async row=>resolvePlayerMedia(ctx,{...row,team:row.team||defaultTeam}));
 }
 
 async function resolvePlayerMedia(ctx,row){
-  const key=`media-v71-${normalizePlayerName(row.name)}-${normalizeTeamName(row.team||'')}`;
-  return cachedValue(key,ctx,OPEN_TTL,async()=>{
-    let espnId=/^\d+$/.test(String(row.espnId||''))?String(row.espnId):(/^\d+$/.test(String(row.id||''))?String(row.id):'');
-    let espn=null,sports=null;
-    const first=await Promise.allSettled([
-      espnId?fetchEspnAthlete(ctx,espnId):searchEspnAthlete(ctx,row.name,row.team),
-      fetchSportsDbPlayer(ctx,row.name,row.team)
+  const key=`media-v9-${normalizePlayerName(row.name)}-${normalizeTeamName(row.team||'')}`;
+  return cachedValue(key,ctx,MEDIA_TTL,async()=>{
+    let espnId=/^\d+$/.test(String(row.espnId||''))?String(row.espnId):'';
+    let espn=null,sports=null,wiki=null;
+    const fast=await Promise.allSettled([
+      espnId?withDeadline(fetchEspnAthlete(ctx,espnId),2600):Promise.resolve(null),
+      withDeadline(fetchSportsDbPlayer(ctx,row.name,row.team),2600),
+      withDeadline(fetchWikipediaPlayerMedia(ctx,row.name,row.team),2800)
     ]);
-    espn=fulfilled(first[0]); sports=fulfilled(first[1]);
+    espn=fulfilled(fast[0]);sports=fulfilled(fast[1]);wiki=fulfilled(fast[2]);
     if(!espnId&&espn?.id)espnId=String(espn.id);
-    let wiki=null;
-    if(!espn?.photo&&!sports?.photo) wiki=await withDeadline(fetchWikidataPlayer(ctx,row.name,row.team),3800).catch(()=>null);
+    if(!espnId&&!espn?.photo&&!sports?.photo&&!wiki?.photo){
+      espn=await withDeadline(searchEspnAthlete(ctx,row.name,row.team),2600).catch(()=>null);
+      if(espn?.id)espnId=String(espn.id);
+    }
     const candidates=uniqueStrings([
+      row.photo,...(row.photoCandidates||[]),
       espn?.photo,
       espnId?espnPhoto(espnId):'',
       espnId?espnPhotoLarge(espnId):'',
@@ -171,6 +212,29 @@ async function resolvePlayerMedia(ctx,row){
       wiki?.photo
     ]);
     return{id:String(row.id||espnId||sports?.id||wiki?.qid||''),espnId:String(espnId||''),wikidataId:String(wiki?.qid||''),name:row.name,team:row.team||'',countryCode:row.countryCode||countryCodeFromName(row.team||sports?.nationality||wiki?.nationality||''),photo:candidates[0]||'',photoCandidates:candidates};
+  });
+}
+
+async function fetchWikipediaPlayerMedia(ctx,name,team=''){
+  const key=`wiki-player-media-v9-${normalizePlayerName(name)}-${normalizeTeamName(team)}`;
+  return cachedValue(key,ctx,MEDIA_TTL,async()=>{
+    const exactTitles=uniqueStrings([name,`${name} (footballer)`]);
+    for(const title of exactTitles){
+      try{
+        const summary=await withDeadline(fetchWikipediaSummary(ctx,title),2100);
+        if(summary?.thumbnail)return{photo:summary.thumbnail,name,title};
+      }catch{}
+    }
+    const url=new URL(WIKIPEDIA_API);
+    const query=`${name} footballer${team?` ${team}`:''}`;
+    Object.entries({action:'query',generator:'search',gsrsearch:query,gsrnamespace:'0',gsrlimit:'3',prop:'pageimages|info',piprop:'thumbnail|original',pithumbsize:'520',inprop:'url',format:'json',origin:'*'}).forEach(([k,v])=>url.searchParams.set(k,v));
+    const response=await fetchWithTimeout(url,{headers:{Accept:'application/json'}},2800);
+    if(!response.ok)throw new Error('wikipedia player media');
+    const data=await response.json();
+    const pages=Object.values(data.query?.pages||{}).sort((a,b)=>(a.index||99)-(b.index||99));
+    const page=pages.find(item=>item.thumbnail?.source||item.original?.source);
+    if(!page)return null;
+    return{photo:page.thumbnail?.source||page.original?.source||'',name:page.title||name};
   });
 }
 
@@ -245,8 +309,8 @@ async function buildPlayerHistory(ctx,query){
   return{playerId:query.id||query.espnId||'',season,tournaments:rows,updatedAt:new Date().toISOString()};
 }
 
-async function fetchScoreboard(ctx){return cachedValue('espn-scoreboard-v7',ctx,75,async()=>{const url=new URL(ESPN_SCOREBOARD);url.searchParams.set('limit','300');url.searchParams.set('dates','20260611-20260719');const r=await fetchWithTimeout(url,{headers:{Accept:'application/json'}},6500);if(!r.ok)throw new Error(`ESPN scoreboard ${r.status}`);return r.json();});}
-async function fetchSummary(ctx,id){return cachedValue(`espn-summary-v7-${id}`,ctx,600,async()=>{const url=new URL(ESPN_SUMMARY);url.searchParams.set('event',id);const r=await fetchWithTimeout(url,{headers:{Accept:'application/json'}},6500);if(!r.ok)throw new Error(`ESPN summary ${r.status}`);return r.json();});}
+async function fetchScoreboard(ctx){return cachedValue('espn-scoreboard-v9',ctx,75,async()=>{const url=new URL(ESPN_SCOREBOARD);url.searchParams.set('limit','300');url.searchParams.set('dates','20260611-20260719');const r=await fetchWithTimeout(url,{headers:{Accept:'application/json'}},6500);if(!r.ok)throw new Error(`ESPN scoreboard ${r.status}`);return r.json();});}
+async function fetchSummary(ctx,id){return cachedValue(`espn-summary-v9-${id}`,ctx,600,async()=>{const url=new URL(ESPN_SUMMARY);url.searchParams.set('event',id);const r=await fetchWithTimeout(url,{headers:{Accept:'application/json'}},6500);if(!r.ok)throw new Error(`ESPN summary ${r.status}`);return r.json();});}
 
 function normalizeEspnEvent(event){
   const competition=event.competitions?.[0]||{},competitors=competition.competitors||[]; const homeRaw=competitors.find(r=>r.homeAway==='home')||competitors[0]||{},awayRaw=competitors.find(r=>r.homeAway==='away')||competitors[1]||{};
@@ -258,12 +322,28 @@ function normalizeEspnTeam(row,status){const team=row.team||{},name=team.display
 
 function normalizeEspnEvents(details,homeId,homeName,awayName){
   return(details||[]).map(detail=>{
-    const involved=[...(Array.isArray(detail.athletesInvolved)?detail.athletesInvolved:[]),...(Array.isArray(detail.participants)?detail.participants:[]),...(Array.isArray(detail.athletes)?detail.athletes:[])].map(r=>r?.athlete||r?.player||r).filter(Boolean);
-    const athlete=involved[0]||detail.athlete||detail.player||detail.scorer||{},assist=involved[1]||detail.assist||{}; const typeText=String(detail.type?.text||detail.type?.description||detail.type||'Событие'),raw=String(detail.text||detail.shortText||detail.description||detail.headline||'').trim();
-    const isGoal=Boolean(detail.scoringPlay||/goal|гол/i.test(typeText)||/goal|гол/i.test(raw)),isRed=Boolean(detail.redCard||/red card|красн/i.test(typeText)),isYellow=Boolean(detail.yellowCard||/yellow card|ж[её]лт/i.test(typeText));
-    const playerName=athlete.displayName||athlete.fullName||athlete.shortName||athlete.name||extractScorer(raw,isGoal),assistName=assist.displayName||assist.fullName||assist.shortName||assist.name||extractAssist(raw); const side=String(detail.team?.id||detail.teamId||'')===String(homeId)?'home':'away';
-    let text=raw||`${typeText}${playerName?` — ${playerName}`:''}`; if(isGoal) text=`${playerName?`Гол — ${playerName}`:'Гол'}${assistName?`, ассист: ${assistName}`:''}`;
-    return{minute:parseMinute(detail.clock?.displayValue||detail.clock?.display||String((detail.clock?.value||0)/60)),icon:isGoal?'⚽':isRed?'🟥':isYellow?'🟨':/sub/i.test(typeText)?'⇄':'•',text,playerId:String(athlete.id||detail.athleteId||''),playerName:playerName||'',assistId:String(assist.id||''),assistName:assistName||'',photo:athlete.headshot?.href||athlete.headshot||espnPhoto(athlete.id),assistPhoto:assist.headshot?.href||assist.headshot||espnPhoto(assist.id),team:side,teamName:side==='home'?homeName:awayName,scoringPlay:isGoal,ownGoal:Boolean(detail.ownGoal||/own goal/i.test(raw))};
+    const rawParticipants=[
+      ...(Array.isArray(detail.athletesInvolved)?detail.athletesInvolved:[]),
+      ...(Array.isArray(detail.participants)?detail.participants:[]),
+      ...(Array.isArray(detail.athletes)?detail.athletes:[])
+    ];
+    const participants=rawParticipants.map(item=>({raw:item,person:item?.athlete||item?.player||item,role:String(item?.type?.text||item?.type||item?.role||item?.participantType||'').toLowerCase()})).filter(item=>item.person);
+    const typeText=String(detail.type?.text||detail.type?.description||detail.type||'Событие');
+    const raw=String(detail.text||detail.shortText||detail.description||detail.headline||'').replace(/\s+/g,' ').trim();
+    const isGoal=Boolean(detail.scoringPlay||/goal|гол/i.test(typeText)||/goal|гол/i.test(raw));
+    const isRed=Boolean(detail.redCard||/red card|красн/i.test(typeText));
+    const isYellow=Boolean(detail.yellowCard||/yellow card|ж[её]лт/i.test(typeText));
+    const scorerParticipant=participants.find(item=>/scorer|goal|shooter/.test(item.role))||participants[0];
+    const assistParticipant=participants.find(item=>/assist/.test(item.role))||participants.find((item,index)=>index>0&&!/sub|card/.test(item.role));
+    const athlete=scorerParticipant?.person||detail.athlete||detail.player||detail.scorer||{};
+    const assist=assistParticipant?.person||detail.assist?.athlete||detail.assist||detail.assistedBy||{};
+    const playerName=athlete.displayName||athlete.fullName||athlete.shortName||athlete.name||extractScorer(raw,isGoal);
+    const assistName=assist.displayName||assist.fullName||assist.shortName||assist.name||extractAssist(raw);
+    const teamId=String(detail.team?.id||detail.teamId||scorerParticipant?.raw?.team?.id||'');
+    const side=teamId===String(homeId)?'home':'away';
+    let text=raw||`${typeText}${playerName?` — ${playerName}`:''}`;
+    if(isGoal)text=`${playerName?`Гол — ${playerName}`:'Гол'}${assistName?`, ассист: ${assistName}`:''}`;
+    return{minute:parseMinute(detail.clock?.displayValue||detail.clock?.display||String((detail.clock?.value||0)/60)),icon:isGoal?'⚽':isRed?'🟥':isYellow?'🟨':/sub/i.test(typeText)?'⇄':'•',text,playerId:String(athlete.id||detail.athleteId||''),playerName:playerName||'',assistId:String(assist.id||detail.assistId||''),assistName:assistName||'',photo:athlete.headshot?.href||athlete.headshot||espnPhoto(athlete.id),assistPhoto:assist.headshot?.href||assist.headshot||espnPhoto(assist.id),team:side,teamName:side==='home'?homeName:awayName,scoringPlay:isGoal,ownGoal:Boolean(detail.ownGoal||/own goal/i.test(raw))};
   }).sort((a,b)=>a.minute-b.minute);
 }
 
@@ -280,7 +360,18 @@ function extractAllPlayerMatchStats(payload,match){
   for(const [id,base] of rosterById){if(rows.some(r=>r.id===id))continue;const events=match.events||[];const goals=events.filter(e=>e.scoringPlay&&!e.ownGoal&&e.playerId===id).length,assists=events.filter(e=>e.scoringPlay&&e.assistId===id).length;if(goals||assists)rows.push({...base,goals,assists,minutes:0,starter:base.starter,rating:computedRating({goals,assists})});}
   return rows;
 }
-function attachRatings(lineups,rows){for(const side of ['home','away'])for(const p of lineups[side]||[]){const row=rows.find(r=>(p.id&&r.id===p.id)||normalizePlayerName(r.name)===normalizePlayerName(p.name));if(row)p.rating=Number(row.rating).toFixed(1);}}
+function attachRatings(lineups,rows,match){
+  for(const side of ['home','away'])for(const p of lineups[side]||[]){
+    const row=rows.find(r=>(p.id&&r.id===p.id)||normalizePlayerName(r.name)===normalizePlayerName(p.name));
+    if(row){p.rating=Number(row.rating||computedRating(row)).toFixed(1);continue;}
+    const events=(match?.events||[]).filter(e=>(p.id&&String(e.playerId||'')===String(p.id))||normalizePlayerName(e.playerName)===normalizePlayerName(p.name)||(p.id&&String(e.assistId||'')===String(p.id))||normalizePlayerName(e.assistName)===normalizePlayerName(p.name));
+    const goals=events.filter(e=>e.scoringPlay&&!e.ownGoal&&((p.id&&String(e.playerId||'')===String(p.id))||normalizePlayerName(e.playerName)===normalizePlayerName(p.name))).length;
+    const assists=events.filter(e=>e.scoringPlay&&((p.id&&String(e.assistId||'')===String(p.id))||normalizePlayerName(e.assistName)===normalizePlayerName(p.name))).length;
+    const baseline=p.starter?6.45:6.05;
+    p.rating=Math.max(4,Math.min(10,baseline+goals*1+assists*.65)).toFixed(1);
+    p.ratingCalculated=true;
+  }
+}
 function computedRating(row){let r=6+Number(row.goals||0)*1.0+Number(row.assists||0)*0.65+Number(row.shotsOnTarget||0)*0.08+Number(row.keyPasses||0)*0.08+Number(row.tackles||0)*0.04+Number(row.interceptions||0)*0.04+Number(row.saves||0)*0.07-Number(row.yellowCards||0)*0.2-Number(row.redCards||0)*1.0;return Math.max(4,Math.min(10,r)).toFixed(2);}
 
 function deriveStandings(matches){const groups=new Map(),ensure=(g,t)=>{if(!groups.has(g))groups.set(g,new Map());const m=groups.get(g);if(!m.has(t.id))m.set(t.id,{pos:0,...t,played:0,won:0,drawn:0,lost:0,gf:0,ga:0,gd:0,points:0,form:[]});return m.get(t.id);};for(const match of matches){if(!match.group)continue;const h=ensure(match.group,match.home),a=ensure(match.group,match.away);if(match.status!=='finished')continue;const hg=nullableNumber(match.home.score),ag=nullableNumber(match.away.score);if(hg===null||ag===null)continue;h.played++;a.played++;h.gf+=hg;h.ga+=ag;a.gf+=ag;a.ga+=hg;if(hg>ag){h.won++;a.lost++;h.points+=3;h.form.push('W');a.form.push('L');}else if(hg<ag){a.won++;h.lost++;a.points+=3;a.form.push('W');h.form.push('L');}else{h.drawn++;a.drawn++;h.points++;a.points++;h.form.push('D');a.form.push('D');}}
@@ -324,7 +415,7 @@ async function fetchSportsDbTeamRoster(ctx,teamName){
   });
 }
 
-async function fetchSportsDbPlayer(ctx,name,team){return cachedValue(`sportsdb-player-${normalizePlayerName(name)}`,ctx,OPEN_TTL,async()=>{const url=`${SPORTSDB}/searchplayers.php?p=${encodeURIComponent(name.replace(/\s+/g,'_'))}`;const r=await fetchWithTimeout(url,{headers:{Accept:'application/json'}},3200);if(!r.ok)throw new Error('sportsdb player');const data=await r.json(),rows=data.player||data.players||[],wanted=normalizePlayerName(name),country=normalizeTeamName(team||'');const row=rows.find(x=>normalizePlayerName(x.strPlayer)===wanted&&(!country||normalizeTeamName(x.strNationality||'').includes(country)))||rows.find(x=>normalizePlayerName(x.strPlayer)===wanted)||rows[0];if(!row)return null;return{id:String(row.idPlayer||''),name:row.strPlayer||name,photo:row.strCutout||row.strThumb||row.strRender||'',height:row.strHeight||'',weight:row.strWeight||'',birthDate:row.dateBorn||'',nationality:row.strNationality||'',position:row.strPosition||'',description:row.strDescriptionEN||'',currentClub:row.strTeam?{name:row.strTeam,logo:row.strTeamBadge||''}:null,website:row.strWebsite||''};});}
+async function fetchSportsDbPlayer(ctx,name,team){return cachedValue(`sportsdb-player-v9-${normalizePlayerName(name)}`,ctx,OPEN_TTL,async()=>{const url=`${SPORTSDB}/searchplayers.php?p=${encodeURIComponent(name.replace(/\s+/g,'_'))}`;const r=await fetchWithTimeout(url,{headers:{Accept:'application/json'}},3200);if(!r.ok)throw new Error('sportsdb player');const data=await r.json(),rows=data.player||data.players||[],wanted=normalizePlayerName(name),country=normalizeTeamName(team||'');const row=rows.find(x=>normalizePlayerName(x.strPlayer)===wanted&&(!country||normalizeTeamName(x.strNationality||'').includes(country)))||rows.find(x=>normalizePlayerName(x.strPlayer)===wanted)||rows[0];if(!row)return null;return{id:String(row.idPlayer||''),name:row.strPlayer||name,photo:row.strCutout||row.strThumb||row.strRender||'',height:row.strHeight||'',weight:row.strWeight||'',birthDate:row.dateBorn||'',nationality:row.strNationality||'',position:row.strPosition||'',description:row.strDescriptionEN||'',currentClub:row.strTeam?{name:row.strTeam,logo:row.strTeamBadge||''}:null,website:row.strWebsite||''};});}
 async function fetchSportsDbHonours(ctx,id,nationality){if(!id)return[];return cachedValue(`sportsdb-honours-${id}`,ctx,OPEN_TTL,async()=>{const r=await fetchWithTimeout(`${SPORTSDB}/lookuphonours.php?id=${encodeURIComponent(id)}`,{headers:{Accept:'application/json'}},3200);if(!r.ok)throw new Error('sportsdb honours');const data=await r.json();const rows=data.honours||data.honor||[];return rows.map(x=>{const title=x.strHonour||x.strAward||x.strTrophy||'',team=x.strTeam||'',season=x.strSeason||x.strYear||'',national=/world cup|copa america|euro|nations league|olympic|africa cup|asian cup|gold cup|finalissima|international/i.test(`${title} ${team}`)||sameTeam(team,nationality);if(!national)return null;const individual=/best|golden|player|boot|ball|glove|young/i.test(title);return individual?{kind:'individual',title,tournament:x.strLeague||'Международный турнир',year:season,wikiTitle:title}:{kind:'team',title:title||x.strLeague||'Международный трофей',competition:x.strLeague||title,season,place:x.strPlace||'Победитель',wikiTitle:x.strLeague||title};}).filter(Boolean);});}
 
 async function fetchWikidataPlayer(ctx,name,nationality){
@@ -339,7 +430,7 @@ async function fetchWikidataPlayer(ctx,name,nationality){
 async function fetchWikidataRelated(ctx,ids){if(!ids.length)return{};const batches=[];for(let i=0;i<ids.length;i+=45)batches.push(ids.slice(i,i+45));const payloads=await Promise.all(batches.map(batch=>cachedValue(`wd-related-${batch.join('-')}`,ctx,OPEN_TTL,async()=>{const u=new URL(WIKIDATA_API);Object.entries({action:'wbgetentities',ids:batch.join('|'),props:'labels|claims',languages:'ru|en',languagefallback:'1',format:'json',origin:'*'}).forEach(([k,v])=>u.searchParams.set(k,v));const r=await fetchWithTimeout(u,{headers:{Accept:'application/json','User-Agent':'WC26/7'}},4200);if(!r.ok)throw new Error('wd related');return r.json();})));return Object.assign({},...payloads.map(p=>p.entities||{}));}
 
 async function enrichHonoursImages(ctx,rows){return Promise.all((rows||[]).map(async row=>{const title=row.wikiTitle||row.competition||row.tournament||row.title;try{const summary=await fetchWikipediaSummary(ctx,title);return{...row,image:summary.thumbnail||'',link:summary.url||''};}catch{return row;}}));}
-async function fetchWikipediaSummary(ctx,title){return cachedValue(`wiki-summary-${title}`,ctx,OPEN_TTL,async()=>{const r=await fetchWithTimeout(`${WIKIPEDIA_SUMMARY}/${encodeURIComponent(String(title).replace(/ /g,'_'))}`,{headers:{Accept:'application/json','User-Agent':'WC26/7'}},3200);if(!r.ok)throw new Error('wiki summary');const x=await r.json();return{extract:x.extract||'',thumbnail:x.thumbnail?.source||x.originalimage?.source||'',url:x.content_urls?.desktop?.page||''};});}
+async function fetchWikipediaSummary(ctx,title){return cachedValue(`wiki-summary-v9-${title}`,ctx,OPEN_TTL,async()=>{const r=await fetchWithTimeout(`${WIKIPEDIA_SUMMARY}/${encodeURIComponent(String(title).replace(/ /g,'_'))}`,{headers:{Accept:'application/json','User-Agent':'WC26/7'}},3200);if(!r.ok)throw new Error('wiki summary');const x=await r.json();return{extract:x.extract||'',thumbnail:x.thumbnail?.source||x.originalimage?.source||'',url:x.content_urls?.desktop?.page||''};});}
 
 async function collectEspnPlayerStats(ctx,player,teamName){
   return cachedValue(`player-stats-v72-${normalizePlayerName(player.name)}-${normalizeTeamName(teamName)}`,ctx,900,async()=>{

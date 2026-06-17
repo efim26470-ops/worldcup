@@ -986,7 +986,7 @@ img { max-width: 100%; }
 
 
 /* MediaFix 7.1: reliable portraits and local trophy artwork */
-.trophy-photo img { padding: 0; object-fit: cover; background: transparent; }
+.trophy-photo img { padding: 8px; object-fit: contain; background: transparent; }
 .trophy-vector-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: #ffd65a; }
 .trophy-vector-fallback svg { width: 30px; height: 30px; }
 .player-avatar.media-loading > span { opacity: .82; }
@@ -1093,4 +1093,71 @@ img { max-width: 100%; }
   height: 17px;
   padding: 5px;
   border-radius: 10px;
+}
+
+
+/* Final Direct v9: stability, media and deeper theme styling */
+.summary-live-card {
+  appearance: none;
+  width: 100%;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+}
+.summary-live-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 65%);
+  transform: translateX(-110%);
+  animation: live-card-sweep 3.2s ease-in-out infinite;
+}
+.summary-live-card:hover { transform: translateY(-3px); box-shadow: 0 18px 46px color-mix(in srgb, var(--accent) 18%, rgba(0,0,0,.22)); border-color: var(--accent); }
+.summary-live-hint { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; color: var(--accent); font-size: 10px; font-weight: 850; }
+@keyframes live-card-sweep { 0%,42%{transform:translateX(-110%)} 74%,100%{transform:translateX(120%)} }
+
+.live-badge { cursor: pointer; position: relative; overflow: hidden; }
+.live-badge::after { content:""; position:absolute; inset:-1px; border-radius:inherit; border:1px solid rgba(255,255,255,.55); animation: live-ring 1.8s ease-out infinite; }
+@keyframes live-ring { from{opacity:.65;transform:scale(.92)} to{opacity:0;transform:scale(1.28)} }
+
+.player-avatar.media-loading { background-size: 220% 220%; animation: avatar-gradient 2.4s ease infinite; }
+.player-avatar.image-loaded img { animation: avatar-pop .35s cubic-bezier(.2,.85,.25,1); }
+@keyframes avatar-gradient { 0%{background-position:0 50%}50%{background-position:100% 50%}100%{background-position:0 50%} }
+@keyframes avatar-pop { from{opacity:0;transform:scale(.9)} to{opacity:1;transform:scale(1)} }
+
+.rating-badge { min-width: 36px; text-align: center; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 26%, var(--surface-strong)), color-mix(in srgb, var(--accent-2) 22%, var(--surface))); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); box-shadow: inset 0 1px 0 rgba(255,255,255,.18); }
+
+.trophy-photo { background: radial-gradient(circle at 35% 25%, rgba(255,255,255,.28), transparent 32%), linear-gradient(145deg, color-mix(in srgb, var(--warning) 34%, var(--surface-strong)), color-mix(in srgb, var(--accent-2) 16%, var(--surface))); }
+.trophy-photo img { z-index: 3; filter: drop-shadow(0 7px 9px rgba(0,0,0,.22)); }
+.trophy-card, .individual-awards article { transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
+.trophy-card:hover, .individual-awards article:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--warning) 42%, var(--line)); box-shadow: 0 16px 34px rgba(0,0,0,.16); }
+
+:root[data-theme="mexico2026"] :is(.panel,.match-card,.summary-card,.topbar,.sidebar,.hero) { border-color: color-mix(in srgb, #79f4e5 25%, var(--line)); }
+:root[data-theme="mexico2026"] .brand-mark,
+:root[data-theme="mexico2026"] .icon-button,
+:root[data-theme="mexico2026"] .player-avatar { background: conic-gradient(from 210deg,#67ebdc,#4058ff,#9f64ed,#ff4c11,#d9f81d,#67ebdc); }
+:root[data-theme="mexico2026"] .hero::after { content:""; position:absolute; right:-8%; bottom:-55%; width:54%; aspect-ratio:1; border-radius:40%; background:repeating-conic-gradient(from 18deg,rgba(103,235,220,.18) 0 8deg,rgba(64,88,255,.16) 8deg 16deg,rgba(217,248,29,.14) 16deg 24deg,rgba(255,76,17,.16) 24deg 32deg); filter:blur(2px); pointer-events:none; }
+
+:root[data-theme="qatar2022"] :is(.panel,.match-card,.summary-card,.topbar,.sidebar,.hero) { border-color: color-mix(in srgb, #f1d7c1 20%, var(--line)); }
+:root[data-theme="qatar2022"] .brand-mark,
+:root[data-theme="qatar2022"] .icon-button,
+:root[data-theme="qatar2022"] .player-avatar { background: linear-gradient(145deg,#f4e2d2,#c589a5 48%,#760d37); color:#520421; }
+:root[data-theme="qatar2022"] .hero::after { content:""; position:absolute; inset:0 0 0 auto; width:45%; opacity:.23; background:linear-gradient(135deg,transparent 0 42%,rgba(255,255,255,.18) 42% 44%,transparent 44% 50%,rgba(255,255,255,.11) 50% 52%,transparent 52%); pointer-events:none; }
+
+:root[data-theme="russia2018"] :is(.panel,.match-card,.summary-card,.topbar,.sidebar,.hero) { border-color: color-mix(in srgb, #f3cf72 22%, var(--line)); }
+:root[data-theme="russia2018"] .brand-mark,
+:root[data-theme="russia2018"] .icon-button,
+:root[data-theme="russia2018"] .player-avatar { background: radial-gradient(circle at 30% 24%,#f5da89,transparent 28%),linear-gradient(145deg,#6db9ff,#143f9e 58%,#e84c62); }
+:root[data-theme="russia2018"] .hero::after { content:"★  ★  ★"; position:absolute; right:6%; bottom:8%; color:#f3cf72; letter-spacing:1.2rem; opacity:.3; transform:rotate(-12deg); font-size:clamp(30px,5vw,74px); pointer-events:none; }
+
+@media (max-width: 560px) {
+  .summary-live-hint { display:none; }
+  .summary-live-card { min-width:0; }
+  .lineup-player { min-height:56px; }
+  .rating-badge { min-width:34px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .summary-live-card::before,.live-badge::after,.player-avatar.media-loading { animation:none !important; }
 }

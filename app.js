@@ -81,7 +81,8 @@
     changedMatchIds: new Set(),
     leadersLoading: false,
     leadersLoaded: false,
-    teamPhotosLoading: new Set()
+    teamPhotosLoading: new Set(),
+    matchPhotosLoading: new Set()
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -410,20 +411,22 @@
     return [...new Set(result.filter(Boolean))];
   }
 
-  function localTrophyAsset(item = {}) {
+  function localTrophyAssets(item = {}) {
     const text = `${item.title || ''} ${item.competition || ''} ${item.tournament || ''}`.toLowerCase();
-    if (/u[- ]?20/.test(text) && /world cup|чемпионат мира/.test(text)) return './assets/trophies/u20-world-cup.svg';
-    if (/world cup|чемпион мира|чемпионат мира/.test(text) && !/golden|золот|young|молод|glove|перчат|boot|бутс/.test(text)) return './assets/trophies/world-cup.svg';
-    if (/copa am[eé]rica|кубок америки/.test(text)) return './assets/trophies/copa-america.svg';
-    if (/european championship|euro|чемпион европ/.test(text)) return './assets/trophies/euro.svg';
-    if (/nations league|лига наций/.test(text)) return './assets/trophies/nations-league.svg';
-    if (/olympic|олимп/.test(text)) return './assets/trophies/olympic.svg';
-    if (/finalissima|финалиссима|conmebol.*uefa/.test(text)) return './assets/trophies/finalissima.svg';
-    if (/golden ball|золотой мяч/.test(text)) return './assets/trophies/golden-ball.svg';
-    if (/golden boot|золотая бутс/.test(text)) return './assets/trophies/golden-boot.svg';
-    if (/golden glove|золотая перчат/.test(text)) return './assets/trophies/golden-glove.svg';
-    if (/young player|молодой игрок/.test(text)) return './assets/trophies/young-player.svg';
-    return './assets/trophies/international-award.svg';
+    if (/u[- ]?20/.test(text) && /world cup|чемпионат мира/.test(text)) return ['./assets/trophies/u20-world-cup.svg'];
+    if (/world cup|чемпион мира|чемпионат мира/.test(text) && !/golden|золот|young|молод|glove|перчат|boot|бутс/.test(text)) {
+      return ['./assets/trophies/photos/world-cup.jpg', './assets/trophies/world-cup.svg'];
+    }
+    if (/copa am[eé]rica|кубок америки/.test(text)) return ['./assets/trophies/photos/copa-america.jpg', './assets/trophies/copa-america.svg'];
+    if (/european championship|euro|чемпион европ/.test(text)) return ['./assets/trophies/photos/euro.jpg', './assets/trophies/euro.svg'];
+    if (/nations league|лига наций/.test(text)) return ['./assets/trophies/photos/nations-league.jpg', './assets/trophies/nations-league.svg'];
+    if (/olympic|олимп/.test(text)) return ['./assets/trophies/olympic.svg'];
+    if (/finalissima|финалиссима|conmebol.*uefa/.test(text)) return ['./assets/trophies/finalissima.svg'];
+    if (/golden ball|золотой мяч/.test(text)) return ['./assets/trophies/golden-ball.svg'];
+    if (/golden boot|золотая бутс/.test(text)) return ['./assets/trophies/golden-boot.svg'];
+    if (/golden glove|золотая перчат/.test(text)) return ['./assets/trophies/golden-glove.svg'];
+    if (/young player|молодой игрок/.test(text)) return ['./assets/trophies/young-player.svg'];
+    return ['./assets/trophies/international-award.svg'];
   }
 
   function mergePlayerMedia(player, media = {}) {
@@ -449,14 +452,16 @@
       espnId: player.espnId || '',
       name: player.name || '',
       team: player.team || teamName || '',
-      countryCode: player.countryCode || ''
+      countryCode: player.countryCode || '',
+      photo: player.photo || '',
+      photoCandidates: player.photoCandidates || []
     })).filter(player => player.name);
     if (!compact.length) return [];
     const url = new URL(`${CONFIG.apiBase}/api/media/players`);
     url.searchParams.set('players', JSON.stringify(compact));
     if (teamName) url.searchParams.set('team', teamName);
     url.searchParams.set('v', CONFIG.build);
-    const payload = await fetchJson(url.toString(), 10000);
+    const payload = await fetchJson(url.toString(), 7500);
     return Array.isArray(payload.players) ? payload.players : [];
   }
 
@@ -498,8 +503,11 @@
       try { candidates = JSON.parse(decodeURIComponent(img.dataset.mediaCandidates || '[]')); } catch { candidates = []; }
       candidates = [...new Set(candidates.filter(Boolean))];
       let index = 0;
-      const holder = img.closest('.player-avatar, .flag-frame, .mini-flag-wrap, .club-logo');
+      let timer = null;
+      const holder = img.closest('.player-avatar, .flag-frame, .mini-flag-wrap, .club-logo, .trophy-photo');
+      const clearTimer = () => { if (timer) clearTimeout(timer); timer = null; };
       const next = () => {
+        clearTimer();
         if (index >= candidates.length) {
           img.hidden = true;
           holder?.classList.add('fallback-only');
@@ -508,10 +516,14 @@
         }
         img.hidden = false;
         holder?.classList.add('media-loading');
+        holder?.classList.remove('image-loaded');
         img.src = candidates[index++];
+        timer = setTimeout(next, 4500);
       };
       img.addEventListener('error', next);
       img.addEventListener('load', () => {
+        clearTimer();
+        if (!img.naturalWidth || !img.naturalHeight) { next(); return; }
         holder?.classList.add('image-loaded');
         holder?.classList.remove('fallback-only', 'media-loading');
       });
@@ -637,14 +649,22 @@
 
   function renderSummary() {
     const matches = state.snapshot?.matches || [];
-    const live = matches.filter(match => match.status === 'live').length;
+    const liveMatches = matches.filter(match => match.status === 'live');
+    const live = liveMatches.length;
     const todayKey = formatDayKey(new Date().toISOString());
     const today = matches.filter(match => formatDayKey(match.startingAt) === todayKey).length;
     const teams = allTeams().length;
     const cards = [
-      [matches.length, 'Матчей'], [today, 'Сегодня'], [live, 'Сейчас live'], [teams || 48, 'Сборных']
+      { value: matches.length, label: 'Матчей' },
+      { value: today, label: 'Сегодня' },
+      { value: live, label: 'Сейчас live', liveMatch: liveMatches[0] || null },
+      { value: teams || 48, label: 'Сборных' }
     ];
-    $('#summaryCards').innerHTML = cards.map(([value, label], index) => `<div class="summary-card glass reveal" style="--delay:${index * 45}ms"><strong>${value}</strong><span>${label}</span></div>`).join('');
+    $('#summaryCards').innerHTML = cards.map((card, index) => {
+      const content = `<strong>${card.value}</strong><span>${card.label}</span>${card.liveMatch ? `<small class="summary-live-hint">Открыть матч ${icon('arrow', 'tiny-icon')}</small>` : ''}`;
+      if (card.liveMatch) return `<button type="button" class="summary-card glass reveal summary-live-card" style="--delay:${index * 45}ms" data-open-match="${escapeHtml(card.liveMatch.id)}" aria-label="Открыть live-матч ${escapeHtml(card.liveMatch.home.name)} — ${escapeHtml(card.liveMatch.away.name)}">${content}</button>`;
+      return `<div class="summary-card glass reveal" style="--delay:${index * 45}ms">${content}</div>`;
+    }).join('');
   }
 
   function teamButtonMarkup(team, side = '') {
@@ -1144,7 +1164,7 @@
       const chunks = [];
       for (let index = 0; index < needsMedia.length; index += 6) chunks.push(needsMedia.slice(index, index + 6));
       const queue = chunks.slice();
-      const workers = Array.from({ length: Math.min(2, queue.length) }, async () => {
+      const workers = Array.from({ length: Math.min(1, queue.length) }, async () => {
         while (queue.length) {
           const chunk = queue.shift();
           let rows = [];
@@ -1201,6 +1221,35 @@
     }
   }
 
+  async function ensureMatchPhotos(match = state.modalMatch) {
+    if (!match?.id || state.matchPhotosLoading.has(String(match.id))) return;
+    const players = [...(match.lineups?.home || []), ...(match.lineups?.away || [])];
+    if (!players.length) return;
+    state.matchPhotosLoading.add(String(match.id));
+    try {
+      const chunks = [];
+      for (let index = 0; index < players.length; index += 8) chunks.push(players.slice(index, index + 8));
+      for (const chunk of chunks) {
+        let rows = [];
+        try { rows = await fetchPlayerMediaBatch(chunk); } catch { rows = []; }
+        if (!rows.length) continue;
+        const byName = new Map(rows.map(row => [slug(row.name), row]));
+        for (const side of ['home', 'away']) {
+          match.lineups[side] = (match.lineups[side] || []).map(player => {
+            const media = byName.get(slug(player.name));
+            return media ? mergePlayerMedia(player, media) : player;
+          });
+        }
+        if (state.modalMatch && String(state.modalMatch.id) === String(match.id)) {
+          state.modalMatch = match;
+          renderModal();
+        }
+      }
+    } finally {
+      state.matchPhotosLoading.delete(String(match.id));
+    }
+  }
+
   function renderModalScoreboard(match) {
     return `<div class="modal-scoreboard">
       <button class="modal-team" type="button" data-open-team="${escapeHtml(teamKey(match.home))}">${flagMarkup(match.home)}<strong>${escapeHtml(match.home.name)}</strong><span class="muted">${escapeHtml(match.home.short)}</span></button>
@@ -1253,7 +1302,7 @@
 
   function lineupPlayerMarkup(player) {
     const normalized = normalizePlayer(player);
-    return `<div class="lineup-player interactive-player" data-open-player="${playerData(normalized)}" tabindex="0" role="button">${avatarMarkup(normalized, true)}<div><div class="player-name">${normalized.number ? `${escapeHtml(normalized.number)} · ` : ''}${escapeHtml(normalized.name)}</div><div class="player-team">${escapeHtml(normalized.pos || (normalized.starter ? 'Старт' : 'Запас'))}</div></div>${normalized.rating ? `<span class="rating-badge">${escapeHtml(normalized.rating)}</span>` : ''}${icon('arrow', 'tiny-icon lineup-arrow')}</div>`;
+    return `<div class="lineup-player interactive-player" data-open-player="${playerData(normalized)}" tabindex="0" role="button">${avatarMarkup(normalized, true)}<div><div class="player-name">${normalized.number ? `${escapeHtml(normalized.number)} · ` : ''}${escapeHtml(normalized.name)}</div><div class="player-team">${escapeHtml(normalized.pos || (normalized.starter ? 'Старт' : 'Запас'))}</div></div>${normalized.rating ? `<span class="rating-badge" title="Расчётная оценка по доступной статистике">${escapeHtml(normalized.rating)}</span>` : ''}${icon('arrow', 'tiny-icon lineup-arrow')}</div>`;
   }
 
   function renderLineups(match) {
@@ -1276,7 +1325,7 @@
     else if (state.modalTab === 'h2h') body = renderH2H(match);
     else body = renderModalOverview(match);
     $('#modalContent').innerHTML = `${renderModalScoreboard(match)}<div class="modal-tabs">${tabs.map(([id, label]) => `<button class="modal-tab${state.modalTab === id ? ' active' : ''}" type="button" data-modal-tab="${id}">${label}</button>`).join('')}</div>${body}`;
-    $$('[data-modal-tab]').forEach(button => button.addEventListener('click', () => { state.modalTab = button.dataset.modalTab; renderModal(); bindMediaFallbacks($('#modalContent')); }));
+    $$('[data-modal-tab]').forEach(button => button.addEventListener('click', () => { state.modalTab = button.dataset.modalTab; renderModal(); bindMediaFallbacks($('#modalContent')); if (state.modalTab === 'lineups') void ensureMatchPhotos(state.modalMatch); }));
     $$('[data-open-team]', $('#modalContent')).forEach(button => button.addEventListener('click', event => { event.stopPropagation(); closeMatchModal(); const team = findTeam(button.dataset.openTeam); if (team) openTeam(team); }));
     $$('[data-open-player]', $('#modalContent')).forEach(element => {
       const action = () => { let seed = {}; try { seed = JSON.parse(decodeURIComponent(element.dataset.openPlayer || '')); } catch { seed = {}; } closeMatchModal(); openPlayer(seed); };
@@ -1295,7 +1344,7 @@
       const payload = await fetchJson(`${CONFIG.apiBase}/api/match?id=${encodeURIComponent(id)}&v=${encodeURIComponent(CONFIG.build)}`);
       if (payload.match) state.modalMatch = normalizeMatch(payload.match);
     } catch { showToast('Подробные данные матча пока недоступны.'); }
-    finally { state.modalLoading = false; renderModal(); }
+    finally { state.modalLoading = false; renderModal(); void ensureMatchPhotos(state.modalMatch); }
   }
 
   function closeMatchModal() {
@@ -1386,9 +1435,9 @@
     const awards = profile?.individualAwards || [];
     if (!teamTrophies.length && !awards.length) return '<div class="empty"><strong>Международные награды пока не найдены</strong><span>Клубные трофеи намеренно не учитываются.</span></div>';
     const trophyMedia = item => {
-      const local = localTrophyAsset(item);
-      const candidates = [local, item.image, item.image ? mediaProxy(item.image) : ''].filter(Boolean);
-      return `<span class="trophy-photo"><img class="media-fallback" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="${escapeHtml(item.title || item.competition || 'Международный трофей')}" data-media-candidates="${encodedCandidates(candidates)}"><span class="trophy-vector-fallback">${icon('trophy')}</span></span>`;
+      const local = localTrophyAssets(item);
+      const candidates = [...local, item.image, item.image ? mediaProxy(item.image) : ''].filter(Boolean);
+      return `<span class="trophy-photo"><img class="media-fallback" src="${escapeHtml(local[0])}" loading="eager" fetchpriority="high" decoding="async" alt="${escapeHtml(item.title || item.competition || 'Международный трофей')}" data-media-candidates="${encodedCandidates(candidates)}"><span class="trophy-vector-fallback">${icon('trophy')}</span></span>`;
     };
     return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Витрина достижений</div><h3>Трофеи со сборной</h3></div><span class="data-quality-badge">Только международные достижения</span></div>
       ${teamTrophies.length ? `<div class="trophy-shelf">${teamTrophies.map(item => `<article class="trophy-card">${trophyMedia(item)}<div><strong>${escapeHtml(item.title || item.competition)}</strong><span>${escapeHtml(item.competition || '')}${item.season ? ` · ${escapeHtml(item.season)}` : ''}</span><small>${escapeHtml(item.place || 'Победитель')}</small></div></article>`).join('')}</div>` : '<div class="empty compact"><strong>Подтверждённые трофеи сборной не найдены</strong><span>Мы не показываем случайные клубные награды.</span></div>'}
