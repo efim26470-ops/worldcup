@@ -1,8 +1,12 @@
-const CACHE = 'wc26-open-shell-v70';
+const CACHE = 'wc26-media-shell-v71';
 const SHELL = [
-  './', './index.html', './styles.css?v=20260617-open70', './config.js?v=20260617-open70', './demo-data.js?v=20260617-open70', './app.js?v=20260617-open70',
+  './', './index.html', './styles.css?v=20260618-media71', './config.js?v=20260618-media71', './demo-data.js?v=20260618-media71', './app.js?v=20260618-media71',
   './manifest.webmanifest', './assets/icons/apple-touch-icon.png', './assets/icons/favicon-16.png',
-  './assets/icons/favicon-32.png', './assets/icons/icon-192.png', './assets/icons/icon-512.png'
+  './assets/icons/favicon-32.png', './assets/icons/icon-192.png', './assets/icons/icon-512.png',
+  './assets/trophies/world-cup.svg', './assets/trophies/copa-america.svg', './assets/trophies/euro.svg',
+  './assets/trophies/nations-league.svg', './assets/trophies/olympic.svg', './assets/trophies/finalissima.svg',
+  './assets/trophies/u20-world-cup.svg', './assets/trophies/golden-ball.svg', './assets/trophies/golden-boot.svg',
+  './assets/trophies/golden-glove.svg', './assets/trophies/young-player.svg', './assets/trophies/international-award.svg'
 ];
 
 self.addEventListener('install', event => {

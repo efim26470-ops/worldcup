@@ -1,18 +1,14 @@
-Загрузите всё содержимое этой папки в КОРЕНЬ репозитория worldcup.
+ЗАГРУЗИТЬ В КОРЕНЬ GITHUB
 
-Должны быть видны сразу:
-.nojekyll
-index.html
-styles.css
-app.js
-config.js
-demo-data.js
-manifest.webmanifest
-service-worker.js
-assets/
+Загрузите всё содержимое этой папки в корень репозитория worldcup с заменой файлов.
+index.html должен находиться непосредственно в корне.
 
 После публикации откройте:
-https://efim26470-ops.github.io/worldcup/?open=70
+https://efim26470-ops.github.io/worldcup/?media=71
 
-Для полного сброса старой версии:
-F12 > Application > Service Workers > Unregister > Storage > Clear site data > Ctrl+F5.
+Если видна старая версия:
+F12 → Application → Service Workers → Unregister
+Application → Storage → Clear site data
+Затем Ctrl+F5.
+
+Перед GitHub обязательно обновите Cloudflare Worker из отдельного архива MEDIAFIX-WORKER.

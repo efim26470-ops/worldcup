@@ -1,8 +1,8 @@
 {
-  "name": "World Cup 26 — Open Live Center",
+  "name": "World Cup 26 — Media Live Center",
   "short_name": "World Cup 26",
   "description": "ЧМ-2026: live-счёт, расписание, составы, профили игроков и статистика из открытых источников",
-  "start_url": "./?pwa=open70#today",
+  "start_url": "./?pwa=media71#today",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
