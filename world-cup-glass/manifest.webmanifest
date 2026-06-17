@@ -1,0 +1,24 @@
+{
+  "id": "./",
+  "name": "World Cup 26 Live Center",
+  "short_name": "WC26 Live",
+  "description": "Расписание, live-счёт, таблицы и статистика чемпионата мира 2026.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#071322",
+  "theme_color": "#071322",
+  "categories": ["sports", "news", "entertainment"],
+  "icons": [
+    { "src": "./assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Матчи сегодня", "short_name": "Сегодня", "url": "./?view=home", "icons": [{ "src": "./assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Турнирные таблицы", "short_name": "Таблицы", "url": "./?view=standings", "icons": [{ "src": "./assets/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
