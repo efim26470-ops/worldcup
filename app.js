@@ -293,7 +293,7 @@
       height: normalizeHeightText(player.height || player.player?.height || ''),
       weight: normalizeWeightText(player.weight || player.player?.weight || ''),
       value: type === 'ratings' ? Number(rawValue || 0).toFixed(2) : safeNumber(rawValue, 0),
-      label: player.label || (type === 'assists' ? 'ассистов' : type === 'ratings' ? 'рейтинг' : 'голов')
+      label: player.label || (type === 'assists' ? 'ассистов' : type === 'ratings' ? 'расчётная оценка' : 'голов')
     };
   }
 
@@ -380,19 +380,15 @@
     };
     const photo = player?.photo || '';
     addRemote(photo);
-    const apiId = String(player?.apiId || '');
     const espnId = String(player?.espnId || '');
     const id = String(player?.id || '');
-    if (/^\d+$/.test(apiId)) {
-      addRemote(`https://media.api-sports.io/football/players/${apiId}.png`);
-    }
     if (/^\d+$/.test(espnId)) {
       addRemote(`https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`);
       addRemote(`https://a.espncdn.com/i/headshots/soccer/players/large/${espnId}.png`);
     }
-    if (!apiId && !espnId && /^\d+$/.test(id)) {
-      addRemote(`https://media.api-sports.io/football/players/${id}.png`);
+    if (!espnId && /^\d+$/.test(id)) {
       addRemote(`https://a.espncdn.com/i/headshots/soccer/players/full/${id}.png`);
+      addRemote(`https://a.espncdn.com/i/headshots/soccer/players/large/${id}.png`);
     }
     return [...new Set(result.filter(Boolean))];
   }
@@ -690,7 +686,7 @@
       <div class="panel-header reveal"><div><div class="eyebrow accent">Player hub</div><h2>Игроки</h2><div class="panel-subtitle">Голы, ассисты и фотографии футболистов</div></div></div>
       <div class="leader-section"><h3 class="section-heading">Бомбардиры</h3>${loading && !leaders.scorers.length ? loadingBlock : playerRows(leaders.scorers.slice(0, 20), 'голов')}</div>
       <div class="leader-section"><h3 class="section-heading">Ассистенты</h3>${loading && !leaders.assists.length ? loadingBlock : playerRows(leaders.assists.slice(0, 20), 'ассистов')}</div>
-      ${leaders.ratings.length ? `<div class="leader-section"><h3 class="section-heading">Лучшие оценки</h3>${playerRows(leaders.ratings.slice(0, 20), 'рейтинг')}</div>` : ''}
+      ${leaders.ratings.length ? `<div class="leader-section"><h3 class="section-heading">Расчётные оценки</h3>${playerRows(leaders.ratings.slice(0, 20), 'расчётная оценка')}</div>` : ''}
     `;
   }
 
@@ -1097,7 +1093,11 @@
 
   function renderH2H(match) {
     const h2h = match.h2h || {};
-    return `<div class="h2h-grid"><div class="h2h-item"><strong>${safeNumber(h2h.homeWins)}</strong><span>Победы ${escapeHtml(match.home.short)}</span></div><div class="h2h-item"><strong>${safeNumber(h2h.draws)}</strong><span>Ничьи</span></div><div class="h2h-item"><strong>${safeNumber(h2h.awayWins)}</strong><span>Победы ${escapeHtml(match.away.short)}</span></div></div>`;
+    const rows = Array.isArray(h2h.matches) ? h2h.matches : [];
+    if (!rows.length) return '<div class="empty compact"><strong>Подтверждённые личные встречи не найдены</strong><span>Вместо нулевой статистики показываем только реально найденные матчи из открытых источников.</span></div>';
+    const summary = `<div class="h2h-grid"><div class="h2h-item"><strong>${safeNumber(h2h.homeWins)}</strong><span>Победы ${escapeHtml(match.home.short)}</span></div><div class="h2h-item"><strong>${safeNumber(h2h.draws)}</strong><span>Ничьи</span></div><div class="h2h-item"><strong>${safeNumber(h2h.awayWins)}</strong><span>Победы ${escapeHtml(match.away.short)}</span></div></div>`;
+    const list = `<div class="h2h-match-list">${rows.map(row => `<article class="h2h-match-row"><div><strong>${escapeHtml(row.home || '—')} — ${escapeHtml(row.away || '—')}</strong><span>${escapeHtml(row.competition || 'Международный матч')}</span></div><b>${escapeHtml(row.homeScore ?? '—')} : ${escapeHtml(row.awayScore ?? '—')}</b><time>${escapeHtml(formatDateTime(row.date, { day: '2-digit', month: 'short', year: 'numeric' }))}</time></article>`).join('')}</div>`;
+    return `${summary}<div class="h2h-scope">${escapeHtml(h2h.scope || 'Найденные встречи')}</div>${list}`;
   }
 
   function renderModalOverview(match) {
@@ -1235,7 +1235,7 @@
       ['Голы', stats.goals], ['Ассисты', stats.assists], ['Удары', stats.shots],
       ['Удары в створ', stats.shotsOnTarget], ['Точные передачи', stats.passes], ['Ключевые передачи', stats.keyPasses],
       ['Отборы', stats.tackles], ['Перехваты', stats.interceptions], ['Успешные обводки', stats.dribbles],
-      ['Жёлтые карточки', stats.yellowCards], ['Красные карточки', stats.redCards], ['Оценка', stats.rating]
+      ['Жёлтые карточки', stats.yellowCards], ['Красные карточки', stats.redCards], ['Расчётная оценка', stats.rating]
     ];
     if (goalkeeper) cards.splice(5, 0, ['Сейвы', stats.saves], ['Пропущено', stats.conceded], ['Сухие матчи', stats.cleanSheets]);
     return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">FIFA World Cup 2026</div><h3>Статистика на турнире</h3></div>${goalkeeper ? '<span class="position-pill">Вратарь</span>' : ''}</div>
@@ -1274,10 +1274,11 @@
     const teamTrophies = profile?.trophies || [];
     const awards = profile?.individualAwards || [];
     if (!teamTrophies.length && !awards.length) return '<div class="empty"><strong>Международные награды пока не найдены</strong><span>Клубные трофеи намеренно не учитываются.</span></div>';
-    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Витрина достижений</div><h3>Трофеи со сборной</h3></div><span class="data-quality-badge">Без клубных наград</span></div>
-      ${teamTrophies.length ? `<div class="trophy-shelf">${teamTrophies.map(item => `<article class="trophy-card"><span class="trophy-emoji">${trophyIcon(item.place)}</span><div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.season || '')}</span><small>${escapeHtml(item.place || 'Участник')}</small></div></article>`).join('')}</div>` : '<div class="empty compact"><strong>Командных трофеев не найдено</strong></div>'}
+    const trophyMedia = item => item.image ? `<span class="trophy-photo"><img class="media-fallback" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="${escapeHtml(item.title || 'Трофей')}" data-media-candidates="${encodedCandidates([item.image, mediaProxy(item.image)])}"><span>${trophyIcon(item.place)}</span></span>` : `<span class="trophy-photo fallback-only"><span>${trophyIcon(item.place)}</span></span>`;
+    return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Витрина достижений</div><h3>Трофеи со сборной</h3></div><span class="data-quality-badge">Только международные достижения</span></div>
+      ${teamTrophies.length ? `<div class="trophy-shelf">${teamTrophies.map(item => `<article class="trophy-card">${trophyMedia(item)}<div><strong>${escapeHtml(item.title || item.competition)}</strong><span>${escapeHtml(item.competition || '')}${item.season ? ` · ${escapeHtml(item.season)}` : ''}</span><small>${escapeHtml(item.place || 'Победитель')}</small></div></article>`).join('')}</div>` : '<div class="empty compact"><strong>Подтверждённые трофеи сборной не найдены</strong><span>Мы не показываем случайные клубные награды.</span></div>'}
       <div class="profile-section-heading secondary-heading"><div><div class="eyebrow">Личные достижения</div><h3>Награды на турнирах сборных</h3></div></div>
-      ${awards.length ? `<div class="individual-awards">${awards.map(item => `<article><span>★</span><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.tournament)} · ${escapeHtml(item.year)}</small></div></article>`).join('')}</div>` : '<div class="empty compact"><strong>Индивидуальные международные награды не найдены</strong></div>'}
+      ${awards.length ? `<div class="individual-awards">${awards.map(item => `<article>${trophyMedia(item)}<div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.tournament || '')}${item.year ? ` · ${escapeHtml(item.year)}` : ''}</small></div></article>`).join('')}</div>` : '<div class="empty compact"><strong>Международные индивидуальные награды не найдены</strong></div>'}
     </div>`;
   }
 
@@ -1526,23 +1527,31 @@
   function renderInstallModal() {
     const platform = installPlatform();
     const ready = Boolean(state.deferredInstall);
-    const copy = {
-      windows: ['Установить на Windows', 'Открой сайт в Microsoft Edge или Google Chrome и нажми кнопку установки. Приложение появится в меню «Пуск» и будет запускаться в отдельном окне.'],
-      ios: ['Добавить на iPhone', 'Открой сайт в Safari, нажми «Поделиться», затем «На экран Домой».'],
-      mac: ['Установить на macOS', 'В Chrome или Edge используй кнопку установки. В Safari выбери «Файл → Добавить в Dock».'],
-      android: ['Установить на Android', 'Открой меню браузера и выбери «Установить приложение» или «Добавить на главный экран».'],
-      desktop: ['Установить приложение', 'Используй Chrome или Edge: в адресной строке появится значок установки.']
+    const instructions = {
+      windows: ['Установка на Windows', 'Microsoft Edge: меню «…» → «Приложения» → «Установить World Cup 26». Google Chrome: значок установки справа в адресной строке или меню «⋮» → «Сохранить и поделиться» → «Установить страницу как приложение».'],
+      ios: ['Добавить на iPhone', 'Открой сайт именно в Safari → «Поделиться» → «На экран Домой» → «Добавить».'],
+      mac: ['Установка на macOS', 'Safari: «Файл» → «Добавить в Dock». Chrome/Edge: используй значок установки в адресной строке.'],
+      android: ['Установка на Android', 'Chrome: меню «⋮» → «Установить приложение» или «Добавить на главный экран».'],
+      desktop: ['Установка приложения', 'Открой меню браузера и выбери установку сайта как приложения.']
     }[platform];
-    $('#installContent').innerHTML = `<div class="install-visual">${icon('install','install-big-icon')}</div><h3>${copy[0]}</h3><p>${copy[1]}</p>
-      <div class="install-benefits"><span>✓ отдельное окно</span><span>✓ офлайн-оболочка</span><span>✓ уведомления</span><span>✓ адаптация под экран</span></div>
-      <button class="primary-button install-confirm" type="button" data-confirm-install ${ready ? '' : 'disabled'}>${ready ? 'Установить сейчас' : 'Ожидаю системную кнопку браузера'}</button>`;
+    const diagnostics = `<div class="install-diagnostics"><span><b>HTTPS</b><small>${location.protocol === 'https:' ? 'готово' : 'нужен HTTPS'}</small></span><span><b>Manifest</b><small>подключён</small></span><span><b>Service Worker</b><small>${'serviceWorker' in navigator ? 'поддерживается' : 'не поддерживается'}</small></span><span><b>Системный prompt</b><small>${ready ? 'готов' : 'может появиться позже'}</small></span></div>`;
+    $('#installContent').innerHTML = `<div class="install-visual">${icon('install','install-big-icon')}</div><h3>${instructions[0]}</h3><p>${instructions[1]}</p>${diagnostics}<div class="install-benefits"><span>✓ отдельное окно</span><span>✓ офлайн-оболочка</span><span>✓ уведомления</span><span>✓ адаптация под экран</span></div><button class="primary-button install-confirm" type="button" data-confirm-install>${ready ? 'Установить сейчас' : 'Проверить готовность'}</button>`;
     $('[data-confirm-install]', $('#installContent'))?.addEventListener('click', async () => {
-      if (!state.deferredInstall) return;
-      state.deferredInstall.prompt();
-      await state.deferredInstall.userChoice;
-      state.deferredInstall = null;
-      closeInstallModal();
-      updateInstallUi();
+      if (state.deferredInstall) {
+        state.deferredInstall.prompt();
+        await state.deferredInstall.userChoice;
+        state.deferredInstall = null;
+        closeInstallModal();
+        updateInstallUi();
+        return;
+      }
+      try {
+        await navigator.serviceWorker?.ready;
+        showToast('Приложение готово. Открой меню браузера и выбери установку сайта как приложения.');
+      } catch {
+        showToast('Браузер пока не подтвердил установку. Обнови страницу и проверь меню браузера.');
+      }
+      renderInstallModal();
     });
   }
 

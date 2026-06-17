@@ -1,8 +1,8 @@
 {
-  "name": "World Cup 26 — Live Center",
+  "name": "World Cup 26 — Open Live Center",
   "short_name": "World Cup 26",
-  "description": "Чемпионат мира 2026: live-счёт, расписание, сборные, игроки и уведомления",
-  "start_url": "./?source=pwa#today",
+  "description": "ЧМ-2026: live-счёт, расписание, составы, профили игроков и статистика из открытых источников",
+  "start_url": "./?pwa=open70#today",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
@@ -55,7 +55,7 @@
       "url": "./#players"
     }
   ],
-  "id": "./",
+  "id": "./?app=worldcup26",
   "display_override": [
     "window-controls-overlay",
     "standalone",
