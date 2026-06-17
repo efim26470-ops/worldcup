@@ -13,8 +13,26 @@
     ['players', 'Игроки', 'players'],
     ['favorites', 'Избранное', 'star']
   ];
-  const THEME_ORDER = ['system', 'dark', 'light'];
-  const THEME_LABELS = { system: 'Системная', dark: 'Тёмная', light: 'Светлая' };
+  const THEME_ORDER = ['system', 'dark', 'light', 'mexico2026', 'qatar2022', 'russia2018'];
+  const THEME_LABELS = {
+    system: 'Системная',
+    dark: 'Тёмная',
+    light: 'Светлая',
+    mexico2026: 'Тема Mexico 2026',
+    qatar2022: 'Тема Qatar 2022',
+    russia2018: 'Тема Russia 2018'
+  };
+  const THEME_META = {
+    dark: '#071522',
+    light: '#eef5ff',
+    mexico2026: '#0b2c28',
+    qatar2022: '#5e0c2e',
+    russia2018: '#0e2f7a'
+  };
+  const THEME_ICONS = {
+    system: 'system', dark: 'dark', light: 'light',
+    mexico2026: 'palette', qatar2022: 'palette', russia2018: 'palette'
+  };
   const STAT_LABELS = {
     possession: 'Владение мячом', shots: 'Удары', shotsOnTarget: 'Удары в створ',
     corners: 'Угловые', fouls: 'Фолы', passes: 'Передачи'
@@ -172,7 +190,8 @@
       arrow: '<path d="m9 18 6-6-6-6"/>',
       trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H4v2a4 4 0 0 0 4 4M16 6h4v2a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6"/>',
       search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
-      clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+      clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+      palette: '<path d="M12 3a9 9 0 1 0 0 18h1.2a2.8 2.8 0 0 0 0-5.6h-.36a1.64 1.64 0 0 1 0-3.28H17A4 4 0 0 0 17 4h-5Z"/><circle cx="7.5" cy="11" r="1"/><circle cx="9.7" cy="7.6" r="1"/><circle cx="14.4" cy="7.5" r="1"/><circle cx="16.7" cy="11.2" r="1"/>'
     };
     return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.home}</svg>`;
   }
@@ -340,9 +359,7 @@
   }
 
   function mediaProxy(url) {
-    if (!url) return '';
-    if (url.startsWith(CONFIG.apiBase)) return url;
-    return `${CONFIG.apiBase}/api/image?url=${encodeURIComponent(url)}`;
+    return url || '';
   }
 
   function localFlagUrl(code) {
@@ -519,9 +536,9 @@
     if (resolved === 'system') resolved = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     document.documentElement.dataset.theme = resolved;
     $('#themeLabel').textContent = THEME_LABELS[state.theme];
-    $('#themeIcon').innerHTML = icon(state.theme, 'icon');
+    $('#themeIcon').innerHTML = icon(THEME_ICONS[state.theme] || state.theme, 'icon');
     const meta = $('meta[name="theme-color"]');
-    if (meta) meta.content = resolved === 'light' ? '#eef5ff' : '#071522';
+    if (meta) meta.content = THEME_META[resolved] || (resolved === 'light' ? '#eef5ff' : '#071522');
   }
 
   function updateClock() {
@@ -951,6 +968,16 @@
   }
 
   async function fetchJson(url, timeout = CONFIG.requestTimeoutMs) {
+    if (String(url).startsWith('direct://wc26')) {
+      if (!window.WC26_DIRECT_API) throw new Error('Direct data module is unavailable');
+      let timer;
+      try {
+        return await Promise.race([
+          window.WC26_DIRECT_API.request(url),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new DOMException('Timeout', 'AbortError')), timeout); })
+        ]);
+      } finally { clearTimeout(timer); }
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -1311,7 +1338,7 @@
     const biography = profile?.biography ? `<div class="player-biography"><h4>О футболисте</h4><p>${escapeHtml(profile.biography)}</p></div>` : '';
     const links = (profile?.externalLinks || []).filter(item => /^https:\/\//.test(item.url || ''));
     return `<div class="player-profile-section"><div class="profile-section-heading"><div><div class="eyebrow">Карьера в сборной</div><h3>Главные показатели</h3></div></div>
-      <div class="player-stat-grid">${statCard('Матчи', total.appearances)}${statCard('Минуты на ЧМ‑2026', total.minutes)}${statCard('Голы', total.goals)}${statCard('Ассисты на ЧМ‑2026', total.assists)}${statCard('Средняя оценка', total.rating)}${statCard('Турниры', total.tournaments)}</div>
+      <div class="player-stat-grid">${statCard('Матчи за сборную', total.appearances ?? wc.appearances)}${statCard('Минуты на ЧМ‑2026', wc.minutes ?? total.minutes)}${statCard('Голы за сборную', total.goals ?? wc.goals)}${statCard('Ассисты на ЧМ‑2026', wc.assists ?? total.assists)}${statCard('Средняя оценка', total.rating)}${statCard('Турниры', total.tournaments)}</div>
       <div class="profile-callout"><span class="profile-callout-icon">${icon('trophy')}</span><div><strong>ЧМ‑2026</strong><span>${metricValue(wc.appearances)} матчей · ${metricValue(wc.goals)} голов · ${metricValue(wc.assists)} ассистов${wc.cleanSheets !== null && wc.cleanSheets !== undefined ? ` · ${metricValue(wc.cleanSheets)} сухих матчей` : ''}</span></div></div>
       ${biography}
       ${links.length ? `<div class="player-source-links">${links.map(item => `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.label)}${icon('arrow','tiny-icon')}</a>`).join('')}</div>` : ''}
@@ -1456,11 +1483,15 @@
       if (payload?.worldCup2026) {
         state.playerProfile.worldCup2026 = payload.worldCup2026;
         state.playerProfile.national2026 = payload.worldCup2026;
+        const career = state.playerProfile.nationalCareer || {};
+        const tournament = payload.worldCup2026 || {};
         state.playerProfile.nationalCareer = {
-          ...(state.playerProfile.nationalCareer || {}),
-          minutes: payload.worldCup2026.minutes ?? state.playerProfile.nationalCareer?.minutes,
-          assists: payload.worldCup2026.assists ?? state.playerProfile.nationalCareer?.assists,
-          rating: payload.worldCup2026.rating ?? state.playerProfile.nationalCareer?.rating
+          ...career,
+          appearances: Math.max(safeNumber(career.appearances), safeNumber(tournament.appearances)),
+          minutes: Math.max(safeNumber(career.minutes), safeNumber(tournament.minutes)),
+          goals: Math.max(safeNumber(career.goals), safeNumber(tournament.goals)),
+          assists: Math.max(safeNumber(career.assists), safeNumber(tournament.assists)),
+          rating: tournament.rating ?? career.rating
         };
         state.playerProfile.statsPending = false;
         cache[cacheKey] = { cachedAt: Date.now(), data: state.playerProfile };

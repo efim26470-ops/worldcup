@@ -47,6 +47,72 @@
   color-scheme: light;
 }
 
+:root[data-theme="mexico2026"] {
+  --bg: #072f2a;
+  --bg-2: #170f42;
+  --surface: rgba(255,255,255,.10);
+  --surface-strong: rgba(255,255,255,.18);
+  --surface-soft: rgba(255,255,255,.07);
+  --surface-solid: rgba(10,31,48,.90);
+  --text: #fbfffd;
+  --muted: rgba(238,255,249,.72);
+  --faint: rgba(238,255,249,.48);
+  --line: rgba(255,255,255,.14);
+  --accent: #58e6d7;
+  --accent-2: #3e57ff;
+  --accent-3: #a58af5;
+  --danger: #ff4f12;
+  --warning: #d9f91e;
+  --success: #72efbe;
+  --shadow: 0 28px 88px rgba(0,0,0,.34);
+  --shadow-soft: 0 14px 42px rgba(0,0,0,.2);
+  color-scheme: dark;
+}
+
+:root[data-theme="qatar2022"] {
+  --bg: #4f0525;
+  --bg-2: #790c34;
+  --surface: rgba(255,248,245,.10);
+  --surface-strong: rgba(255,248,245,.17);
+  --surface-soft: rgba(255,248,245,.07);
+  --surface-solid: rgba(69,8,31,.90);
+  --text: #fff8f5;
+  --muted: rgba(255,241,235,.74);
+  --faint: rgba(255,241,235,.46);
+  --line: rgba(255,237,226,.13);
+  --accent: #f2d8bf;
+  --accent-2: #e8b4c9;
+  --accent-3: #ffffff;
+  --danger: #ff8e9d;
+  --warning: #f3d17b;
+  --success: #b9edd5;
+  --shadow: 0 28px 88px rgba(37,0,11,.36);
+  --shadow-soft: 0 14px 42px rgba(37,0,11,.22);
+  color-scheme: dark;
+}
+
+:root[data-theme="russia2018"] {
+  --bg: #082b73;
+  --bg-2: #0f4bb0;
+  --surface: rgba(255,255,255,.11);
+  --surface-strong: rgba(255,255,255,.18);
+  --surface-soft: rgba(255,255,255,.07);
+  --surface-solid: rgba(10,33,84,.90);
+  --text: #fbfcff;
+  --muted: rgba(244,247,255,.72);
+  --faint: rgba(244,247,255,.46);
+  --line: rgba(255,255,255,.15);
+  --accent: #f2cd6d;
+  --accent-2: #79b8ff;
+  --accent-3: #e94d62;
+  --danger: #ff8898;
+  --warning: #ffd86a;
+  --success: #83efc8;
+  --shadow: 0 28px 88px rgba(1,13,46,.35);
+  --shadow-soft: 0 14px 42px rgba(1,13,46,.22);
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -61,6 +127,51 @@ body {
     linear-gradient(135deg, var(--bg), var(--bg-2));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  opacity: .28;
+  background: none;
+}
+
+:root[data-theme="mexico2026"] body::before {
+  opacity: .33;
+  background:
+    radial-gradient(circle at 50% 8%, rgba(255,87,34,.55), transparent 14rem),
+    repeating-linear-gradient(90deg,
+      rgba(97,231,219,.22) 0 2.8rem,
+      rgba(120,14,255,.20) 2.8rem 5.6rem,
+      rgba(209,255,22,.19) 5.6rem 8.4rem,
+      rgba(255,78,15,.18) 8.4rem 11.2rem,
+      rgba(72,103,255,.19) 11.2rem 14rem),
+    linear-gradient(180deg, transparent 0 47%, rgba(255,255,255,.18) 49.5%, transparent 50.5%),
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,.12), transparent 30%);
+  background-size: auto, 18rem 100%, 100% 100%, 100% 100%;
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.92), rgba(0,0,0,.86));
+}
+
+:root[data-theme="qatar2022"] body::before {
+  opacity: .30;
+  background:
+    radial-gradient(circle at 22% 24%, rgba(255,255,255,.10), transparent 20rem),
+    radial-gradient(circle at 78% 18%, rgba(242,216,191,.16), transparent 18rem),
+    radial-gradient(circle at 50% 85%, rgba(255,255,255,.10), transparent 24rem),
+    linear-gradient(135deg, rgba(255,255,255,.07), transparent 42%, rgba(255,255,255,.05) 65%, transparent 80%);
+}
+
+:root[data-theme="russia2018"] body::before {
+  opacity: .30;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(242,205,109,.22), transparent 14rem),
+    radial-gradient(circle at 82% 24%, rgba(121,184,255,.20), transparent 18rem),
+    radial-gradient(circle at 50% 82%, rgba(233,77,98,.16), transparent 20rem),
+    linear-gradient(180deg, rgba(255,255,255,.04), transparent 30%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg fill='none' stroke='%23f2cd6d' stroke-opacity='.16' stroke-width='1.5'%3E%3Cpath d='M80 20l6 18h18L89 49l6 18-15-10-15 10 6-18-15-11h18z'/%3E%3Cpath d='M36 98l4 12h12l-10 7 4 12-10-7-10 7 4-12-10-7h12z'/%3E%3Cpath d='M124 98l4 12h12l-10 7 4 12-10-7-10 7 4-12-10-7h12z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: auto, auto, auto, auto, 11rem 11rem;
 }
 button, input { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
@@ -885,4 +996,101 @@ img { max-width: 100%; }
   .trophy-shelf { grid-template-columns: 1fr !important; }
   .trophy-card { min-height: 84px; }
   .trophy-photo { width: 56px; height: 56px; border-radius: 17px; }
+}
+
+
+/* Tournament-theme icon system */
+:root[data-theme="mexico2026"],
+:root[data-theme="qatar2022"],
+:root[data-theme="russia2018"] {
+  --theme-icon-ink: var(--text);
+  --theme-icon-surface: color-mix(in srgb, var(--accent) 18%, transparent);
+  --theme-icon-border: color-mix(in srgb, var(--accent) 44%, var(--line));
+  --theme-icon-glow: color-mix(in srgb, var(--accent-2) 34%, transparent);
+}
+
+:root[data-theme="mexico2026"] {
+  --theme-icon-ink: #effffb;
+  --theme-icon-surface: linear-gradient(135deg, rgba(88,230,215,.24), rgba(62,87,255,.24), rgba(255,79,18,.18));
+  --theme-icon-border: rgba(126,255,225,.34);
+  --theme-icon-glow: rgba(78,84,255,.34);
+}
+:root[data-theme="qatar2022"] {
+  --theme-icon-ink: #fff4ea;
+  --theme-icon-surface: linear-gradient(145deg, rgba(242,216,191,.22), rgba(255,255,255,.08));
+  --theme-icon-border: rgba(242,216,191,.34);
+  --theme-icon-glow: rgba(232,180,201,.28);
+}
+:root[data-theme="russia2018"] {
+  --theme-icon-ink: #ffe29a;
+  --theme-icon-surface: linear-gradient(145deg, rgba(242,205,109,.23), rgba(121,184,255,.13), rgba(233,77,98,.12));
+  --theme-icon-border: rgba(242,205,109,.38);
+  --theme-icon-glow: rgba(121,184,255,.32);
+}
+
+:root[data-theme="mexico2026"] :is(.nav-button > .icon, .theme-button .icon, .sidebar-action .icon, .primary-button .icon, .profile-callout-icon .icon),
+:root[data-theme="qatar2022"] :is(.nav-button > .icon, .theme-button .icon, .sidebar-action .icon, .primary-button .icon, .profile-callout-icon .icon),
+:root[data-theme="russia2018"] :is(.nav-button > .icon, .theme-button .icon, .sidebar-action .icon, .primary-button .icon, .profile-callout-icon .icon) {
+  width: 18px;
+  height: 18px;
+  padding: 6px;
+  box-sizing: content-box;
+  border-radius: 11px;
+  color: var(--theme-icon-ink);
+  background: var(--theme-icon-surface);
+  border: 1px solid var(--theme-icon-border);
+  filter: drop-shadow(0 5px 10px var(--theme-icon-glow));
+  transition: transform .2s ease, filter .2s ease, background .2s ease;
+}
+
+:root[data-theme="mexico2026"] .nav-button:hover > .icon,
+:root[data-theme="qatar2022"] .nav-button:hover > .icon,
+:root[data-theme="russia2018"] .nav-button:hover > .icon,
+:root[data-theme="mexico2026"] .surface-button:hover .icon,
+:root[data-theme="qatar2022"] .surface-button:hover .icon,
+:root[data-theme="russia2018"] .surface-button:hover .icon {
+  transform: translateY(-1px) scale(1.06) rotate(-2deg);
+  filter: drop-shadow(0 8px 14px var(--theme-icon-glow));
+}
+
+:root[data-theme="mexico2026"] .nav-button:nth-child(3n+1) > .icon { color: #dfff24; }
+:root[data-theme="mexico2026"] .nav-button:nth-child(3n+2) > .icon { color: #7bf2e6; }
+:root[data-theme="mexico2026"] .nav-button:nth-child(3n) > .icon { color: #ff7f4c; }
+:root[data-theme="qatar2022"] .nav-button.active > .icon { color: #5e0c2e; background: #f2d8bf; }
+:root[data-theme="russia2018"] .nav-button.active > .icon { color: #0e2f7a; background: #f2cd6d; }
+
+:root[data-theme="mexico2026"] .icon-button,
+:root[data-theme="qatar2022"] .icon-button,
+:root[data-theme="russia2018"] .icon-button {
+  color: var(--theme-icon-ink);
+  border-color: var(--theme-icon-border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-icon-border) 35%, transparent), 0 7px 20px var(--theme-icon-glow);
+}
+
+:root[data-theme="mexico2026"] .brand-mark {
+  color: #071522;
+  background: conic-gradient(from 20deg, #58e6d7, #3e57ff, #a58af5, #ff4f12, #d9f91e, #58e6d7);
+}
+:root[data-theme="qatar2022"] .brand-mark {
+  color: #5e0c2e;
+  background: linear-gradient(145deg, #fff5e8, #e8b4c9 72%, #f2d8bf);
+}
+:root[data-theme="russia2018"] .brand-mark {
+  color: #0e2f7a;
+  background: radial-gradient(circle at 35% 30%, #fff4be, #f2cd6d 48%, #e94d62 100%);
+}
+
+:root[data-theme="mexico2026"] :is(.hero-ball svg, .trophy-vector-fallback svg, .brand-mark svg),
+:root[data-theme="qatar2022"] :is(.hero-ball svg, .trophy-vector-fallback svg, .brand-mark svg),
+:root[data-theme="russia2018"] :is(.hero-ball svg, .trophy-vector-fallback svg, .brand-mark svg) {
+  filter: drop-shadow(0 9px 18px var(--theme-icon-glow));
+}
+
+:root[data-theme="mexico2026"] .mobile-nav .nav-button .icon,
+:root[data-theme="qatar2022"] .mobile-nav .nav-button .icon,
+:root[data-theme="russia2018"] .mobile-nav .nav-button .icon {
+  width: 17px;
+  height: 17px;
+  padding: 5px;
+  border-radius: 10px;
 }

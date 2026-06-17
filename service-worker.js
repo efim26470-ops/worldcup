@@ -1,6 +1,7 @@
-const CACHE = 'wc26-media-shell-v71';
+const CACHE = 'wc26-final-no-cloudflare-v8';
 const SHELL = [
-  './', './index.html', './styles.css?v=20260618-media71', './config.js?v=20260618-media71', './demo-data.js?v=20260618-media71', './app.js?v=20260618-media71',
+  './', './index.html', './styles.css?v=20260618-final8', './config.js?v=20260618-final8',
+  './demo-data.js?v=20260618-final8', './direct-data.js?v=20260618-final8', './app.js?v=20260618-final8',
   './manifest.webmanifest', './assets/icons/apple-touch-icon.png', './assets/icons/favicon-16.png',
   './assets/icons/favicon-32.png', './assets/icons/icon-192.png', './assets/icons/icon-512.png',
   './assets/trophies/world-cup.svg', './assets/trophies/copa-america.svg', './assets/trophies/euro.svg',
@@ -26,7 +27,6 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  if (url.hostname.endsWith('.workers.dev')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
