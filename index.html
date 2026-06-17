@@ -1,720 +1,81 @@
-(() => {
-  "use strict";
-
-  const config = window.WC26_CONFIG || {};
-  const demoData = window.WC26_DEMO_DATA || { matches: [], standings: [], leaders: {} };
-  const $ = (selector, root = document) => root.querySelector(selector);
-  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-
-  const state = {
-    data: demoData,
-    selectedDate: null,
-    route: "home",
-    scheduleFilter: "all",
-    favorites: new Set(JSON.parse(localStorage.getItem("wc26:favorites") || "[]")),
-    theme: localStorage.getItem("wc26:theme") || "system",
-    source: "demo",
-    lastError: null,
-    deferredInstallPrompt: null,
-    activeMatch: null,
-    activeDialogTab: "overview"
-  };
-
-  const refs = {
-    html: document.documentElement,
-    pageTitle: $("#pageTitle"),
-    topEyebrow: $("#topEyebrow"),
-    dateRailSection: $("#dateRailSection"),
-    dateRail: $("#dateRail"),
-    selectedDateTitle: $("#selectedDateTitle"),
-    heroMatch: $("#heroMatch"),
-    matchList: $("#matchList"),
-    matchCountBadge: $("#matchCountBadge"),
-    groupLeaders: $("#groupLeaders"),
-    topScorersMini: $("#topScorersMini"),
-    fullSchedule: $("#fullSchedule"),
-    standingsGrid: $("#standingsGrid"),
-    scorersTable: $("#scorersTable"),
-    assistsTable: $("#assistsTable"),
-    ratingsGrid: $("#ratingsGrid"),
-    favoritesList: $("#favoritesList"),
-    sourceDot: $("#sourceDot"),
-    sourceLabel: $("#sourceLabel"),
-    statusTitle: $("#statusTitle"),
-    statusText: $("#statusText"),
-    lastUpdated: $("#lastUpdated"),
-    timezoneLabel: $("#timezoneLabel"),
-    refreshButton: $("#refreshButton"),
-    installButton: $("#installButton"),
-    themeButton: $("#themeButton"),
-    themeLabel: $("#themeLabel"),
-    themeIcon: $("#themeIcon"),
-    toast: $("#toast"),
-    matchDialog: $("#matchDialog"),
-    matchDialogContent: $("#matchDialogContent"),
-    aboutDialog: $("#aboutDialog")
-  };
-
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function safeNumber(value, fallback = 0) {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : fallback;
-  }
-
-  function dateKey(value) {
-    const date = value instanceof Date ? value : new Date(value);
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }).formatToParts(date);
-    const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-    return `${map.year}-${map.month}-${map.day}`;
-  }
-
-  function parseDateKey(key) {
-    const [year, month, day] = key.split("-").map(Number);
-    return new Date(year, month - 1, day, 12, 0, 0);
-  }
-
-  function addDays(date, amount) {
-    const next = new Date(date);
-    next.setDate(next.getDate() + amount);
-    return next;
-  }
-
-  function formatTime(iso) {
-    return new Intl.DateTimeFormat(config.locale || "ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(new Date(iso));
-  }
-
-  function formatDateTitle(key) {
-    return new Intl.DateTimeFormat(config.locale || "ru-RU", {
-      weekday: "long",
-      day: "numeric",
-      month: "long"
-    }).format(parseDateKey(key));
-  }
-
-  function formatShortDate(key) {
-    const parts = new Intl.DateTimeFormat(config.locale || "ru-RU", {
-      weekday: "short",
-      day: "numeric",
-      month: "short"
-    }).formatToParts(parseDateKey(key));
-    const weekday = parts.find((part) => part.type === "weekday")?.value.replace(".", "") || "";
-    const day = parts.find((part) => part.type === "day")?.value || "";
-    const month = parts.find((part) => part.type === "month")?.value.replace(".", "") || "";
-    return { weekday, day, month };
-  }
-
-  function statusLabel(match) {
-    if (match.status === "live") return `${safeNumber(match.minute)}′`;
-    if (match.status === "finished") return "Завершён";
-    if (match.status === "postponed") return "Перенесён";
-    return formatTime(match.startingAt);
-  }
-
-  function statusSecondary(match) {
-    if (match.status === "live") return "В эфире";
-    if (match.status === "finished") return "Итог";
-    if (match.status === "postponed") return "Новая дата позже";
-    return "По местному времени";
-  }
-
-  function scoreValue(value) {
-    return value === null || value === undefined ? "—" : escapeHtml(value);
-  }
-
-  function isToday(key) {
-    return key === dateKey(new Date());
-  }
-
-  function matchesForDate(key) {
-    return state.data.matches
-      .filter((match) => dateKey(match.startingAt) === key)
-      .sort((a, b) => new Date(a.startingAt) - new Date(b.startingAt));
-  }
-
-  function getAvailableDateRange() {
-    const matchDates = state.data.matches.map((match) => parseDateKey(dateKey(match.startingAt)));
-    const today = new Date();
-    if (!matchDates.length) return Array.from({ length: 9 }, (_, index) => addDays(today, index - 4));
-
-    const min = new Date(Math.min(...matchDates.map(Number)));
-    const max = new Date(Math.max(...matchDates.map(Number)));
-    const start = addDays(min, -2);
-    const end = addDays(max, 2);
-    const dates = [];
-    for (let cursor = start; cursor <= end; cursor = addDays(cursor, 1)) dates.push(new Date(cursor));
-    return dates;
-  }
-
-  function pickInitialDate() {
-    const todayKey = dateKey(new Date());
-    if (matchesForDate(todayKey).length) return todayKey;
-    const keys = [...new Set(state.data.matches.map((match) => dateKey(match.startingAt)))];
-    if (!keys.length) return todayKey;
-    return keys.sort((a, b) => Math.abs(parseDateKey(a) - new Date()) - Math.abs(parseDateKey(b) - new Date()))[0];
-  }
-
-  function toast(message) {
-    refs.toast.textContent = message;
-    refs.toast.classList.add("show");
-    clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => refs.toast.classList.remove("show"), 2600);
-  }
-
-  function applyTheme() {
-    refs.html.dataset.theme = state.theme;
-    const labels = { system: "Системная", light: "Светлая", dark: "Тёмная" };
-    const icons = { system: "◐", light: "☀", dark: "☾" };
-    refs.themeLabel.textContent = labels[state.theme];
-    refs.themeIcon.textContent = icons[state.theme];
-    const mobileThemeIcon = $("#mobileThemeIcon");
-    if (mobileThemeIcon) mobileThemeIcon.textContent = icons[state.theme];
-    localStorage.setItem("wc26:theme", state.theme);
-  }
-
-  function cycleTheme() {
-    const order = ["system", "light", "dark"];
-    state.theme = order[(order.indexOf(state.theme) + 1) % order.length];
-    applyTheme();
-    toast(`Тема: ${refs.themeLabel.textContent.toLowerCase()}`);
-  }
-
-  function renderDateRail() {
-    refs.dateRail.innerHTML = getAvailableDateRange().map((date) => {
-      const key = dateKey(date);
-      const formatted = formatShortDate(key);
-      const count = matchesForDate(key).length;
-      const label = count ? `${count} матч${count === 1 ? "" : count < 5 ? "а" : "ей"}` : formatted.month;
-      return `
-        <button class="date-chip ${key === state.selectedDate ? "active" : ""} ${isToday(key) ? "today" : ""}"
-                type="button" data-date="${key}" role="listitem" aria-pressed="${key === state.selectedDate}">
-          <small>${escapeHtml(formatted.weekday)}</small>
-          <strong>${escapeHtml(formatted.day)}</strong>
-          <small>${escapeHtml(label)}</small>
-        </button>`;
-    }).join("");
-
-    refs.selectedDateTitle.textContent = `${formatDateTitle(state.selectedDate).replace(/^./, (char) => char.toUpperCase())}`;
-    requestAnimationFrame(() => $(".date-chip.active", refs.dateRail)?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }));
-  }
-
-  function renderHero() {
-    const matches = matchesForDate(state.selectedDate);
-    const hero = matches.find((match) => match.status === "live")
-      || matches.find((match) => match.status === "upcoming")
-      || matches[0];
-
-    if (!hero) {
-      refs.heroMatch.innerHTML = `
-        <div class="hero-inner">
-          <div class="hero-info">
-            <div class="stage-row"><span class="stage-badge">День без матчей</span></div>
-            <h2 class="hero-title">Сегодня можно перевести дух</h2>
-            <p class="hero-sub">Выберите другую дату в календаре, чтобы посмотреть расписание.</p>
-          </div>
-        </div>`;
-      return;
-    }
-
-    const isLive = hero.status === "live";
-    const mainLabel = isLive ? `${hero.minute}′ · В эфире` : hero.status === "finished" ? "Матч завершён" : `Начало в ${formatTime(hero.startingAt)}`;
-    refs.heroMatch.innerHTML = `
-      <div class="hero-inner">
-        <div class="hero-info">
-          <div class="stage-row">
-            ${isLive ? '<span class="live-badge">Live</span>' : ""}
-            <span class="stage-badge">${escapeHtml(hero.stage)}</span>
-          </div>
-          <h2 class="hero-title">${escapeHtml(hero.home.name)} — ${escapeHtml(hero.away.name)}</h2>
-          <p class="hero-sub">${escapeHtml(mainLabel)} · ${escapeHtml(hero.venue)} · ${escapeHtml(hero.city || "")}</p>
-          <div class="hero-actions">
-            <button class="primary-button" type="button" data-open-match="${escapeHtml(hero.id)}">Матч-центр</button>
-            <button class="secondary-button" type="button" data-favorite="${escapeHtml(hero.id)}">${state.favorites.has(hero.id) ? "★ В избранном" : "☆ В избранное"}</button>
-          </div>
-        </div>
-        <div class="hero-score" aria-label="Счёт матча">
-          <div class="hero-team">
-            <span class="flag-bubble">${escapeHtml(hero.home.flag)}</span>
-            <span class="hero-team-name"><strong>${escapeHtml(hero.home.name)}</strong><small>${escapeHtml(hero.home.short)}</small></span>
-            <span class="hero-goals">${scoreValue(hero.home.score)}</span>
-          </div>
-          <div class="hero-divider"></div>
-          <div class="hero-team">
-            <span class="flag-bubble">${escapeHtml(hero.away.flag)}</span>
-            <span class="hero-team-name"><strong>${escapeHtml(hero.away.name)}</strong><small>${escapeHtml(hero.away.short)}</small></span>
-            <span class="hero-goals">${scoreValue(hero.away.score)}</span>
-          </div>
-          <div class="hero-clock">${escapeHtml(statusSecondary(hero))}</div>
-        </div>
-      </div>`;
-  }
-
-  function matchCard(match) {
-    const favorite = state.favorites.has(match.id);
-    return `
-      <article class="match-card ${match.status === "live" ? "live" : ""}" data-open-match="${escapeHtml(match.id)}" tabindex="0" role="button" aria-label="Открыть матч ${escapeHtml(match.home.name)} — ${escapeHtml(match.away.name)}">
-        <div class="match-time">
-          <strong>${escapeHtml(statusLabel(match))}</strong>
-          <small>${escapeHtml(statusSecondary(match))}</small>
-        </div>
-        <div class="match-teams">
-          <div class="match-team"><span class="flag">${escapeHtml(match.home.flag)}</span><strong>${escapeHtml(match.home.name)}</strong><span class="score">${scoreValue(match.home.score)}</span></div>
-          <div class="match-team"><span class="flag">${escapeHtml(match.away.flag)}</span><strong>${escapeHtml(match.away.name)}</strong><span class="score">${scoreValue(match.away.score)}</span></div>
-        </div>
-        <div class="match-meta">
-          <button class="favorite-button ${favorite ? "active" : ""}" type="button" data-favorite="${escapeHtml(match.id)}" aria-label="${favorite ? "Убрать из избранного" : "Добавить в избранное"}">${favorite ? "★" : "☆"}</button>
-          <small>${escapeHtml(match.stage)}<br>${escapeHtml(match.city || "")}</small>
-        </div>
-      </article>`;
-  }
-
-  function renderMatchList() {
-    const matches = matchesForDate(state.selectedDate);
-    refs.matchCountBadge.textContent = matches.length;
-    refs.matchList.innerHTML = matches.length
-      ? matches.map(matchCard).join("")
-      : '<div class="empty-state">На выбранную дату матчей нет.</div>';
-  }
-
-  function renderSideCards() {
-    const groups = (state.data.standings || []).slice(0, 5);
-    refs.groupLeaders.innerHTML = groups.map((group) => {
-      const leader = [...group.teams].sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf)[0];
-      return `
-        <div class="leader-row">
-          <span class="group-pill">${escapeHtml(group.group)}</span>
-          <span class="leader-copy"><strong>${escapeHtml(leader.flag)} ${escapeHtml(leader.name)}</strong><small>${leader.played} игр · ${leader.gf}:${leader.ga}</small></span>
-          <span class="points">${leader.points}</span>
-        </div>`;
-    }).join("");
-
-    refs.topScorersMini.innerHTML = (state.data.leaders?.scorers || []).slice(0, 4).map((player) => `
-      <div class="scorer-row">
-        <span class="group-pill">${escapeHtml(player.rank)}</span>
-        <span class="scorer-copy"><strong>${escapeHtml(player.flag)} ${escapeHtml(player.name)}</strong><small>${escapeHtml(player.team)}</small></span>
-        <span class="metric">${safeNumber(player.value)}</span>
-      </div>`).join("");
-  }
-
-  function renderSchedule() {
-    const filtered = state.data.matches.filter((match) => state.scheduleFilter === "all" || match.status === state.scheduleFilter);
-    const grouped = filtered.reduce((acc, match) => {
-      const key = dateKey(match.startingAt);
-      (acc[key] ||= []).push(match);
-      return acc;
-    }, {});
-
-    refs.fullSchedule.innerHTML = Object.keys(grouped).sort().map((key) => `
-      <section class="schedule-day">
-        <h3>${escapeHtml(formatDateTitle(key).replace(/^./, (char) => char.toUpperCase()))}</h3>
-        <div class="schedule-day-grid">${grouped[key].sort((a,b) => new Date(a.startingAt)-new Date(b.startingAt)).map(matchCard).join("")}</div>
-      </section>`).join("") || '<div class="empty-state">Нет матчей для выбранного фильтра.</div>';
-  }
-
-  function formDots(form = []) {
-    return `<span class="form-dots">${form.slice(-5).map((result) => `<i class="form-dot ${result.toLowerCase()}">${escapeHtml(result)}</i>`).join("")}</span>`;
-  }
-
-  function renderStandings() {
-    refs.standingsGrid.innerHTML = (state.data.standings || []).map((group) => `
-      <section class="standings-card glass">
-        <div class="standings-title"><h3>Группа ${escapeHtml(group.group)}</h3><span class="stage-badge">${group.teams.reduce((sum, team) => sum + safeNumber(team.played), 0)} игр</span></div>
-        <div class="table-wrap">
-          <table class="standings-table">
-            <thead><tr><th>#</th><th>Команда</th><th>И</th><th>В</th><th>Н</th><th>П</th><th>М</th><th>РМ</th><th>Форма</th><th>О</th></tr></thead>
-            <tbody>
-              ${group.teams.map((team) => `
-                <tr>
-                  <td class="position ${team.pos <= 2 ? "q" : team.pos === 3 ? "p" : ""}">${team.pos}</td>
-                  <td><span class="team-cell"><span>${escapeHtml(team.flag)}</span><strong>${escapeHtml(team.name)}</strong></span></td>
-                  <td>${team.played}</td><td>${team.won}</td><td>${team.drawn}</td><td>${team.lost}</td>
-                  <td>${team.gf}:${team.ga}</td><td>${team.gd > 0 ? "+" : ""}${team.gd}</td><td>${formDots(team.form)}</td><td><strong>${team.points}</strong></td>
-                </tr>`).join("")}
-            </tbody>
-          </table>
-        </div>
-      </section>`).join("");
-  }
-
-  function rankingRows(items = []) {
-    return items.map((player, index) => `
-      <div class="ranking-row">
-        <span class="rank-number">${player.rank || index + 1}</span>
-        <span class="player-avatar">${escapeHtml(player.flag)}</span>
-        <span class="player-copy"><strong>${escapeHtml(player.name)}</strong><small>${escapeHtml(player.team)}</small></span>
-        <span class="metric-block"><strong>${safeNumber(player.value)}</strong><small>${escapeHtml(player.label || "")}</small></span>
-      </div>`).join("");
-  }
-
-  function renderStats() {
-    refs.scorersTable.innerHTML = rankingRows(state.data.leaders?.scorers);
-    refs.assistsTable.innerHTML = rankingRows(state.data.leaders?.assists);
-    refs.ratingsGrid.innerHTML = (state.data.leaders?.ratings || []).map((player) => `
-      <article class="rating-card">
-        <div class="rating-top"><span class="player-avatar">${escapeHtml(player.flag)}</span><span class="rating-value">${safeNumber(player.rating).toFixed(1)}</span></div>
-        <div><strong>${escapeHtml(player.name)}</strong><br><small>${escapeHtml(player.team)} · ${safeNumber(player.matches)} матч.</small></div>
-        <div class="rating-bar"><span style="width:${Math.min(100, safeNumber(player.rating) * 10)}%"></span></div>
-      </article>`).join("");
-  }
-
-  function renderFavorites() {
-    const items = state.data.matches.filter((match) => state.favorites.has(match.id));
-    refs.favoritesList.innerHTML = items.length
-      ? items.map(matchCard).join("")
-      : '<div class="empty-state">Пока ничего не добавлено.</div>';
-  }
-
-  function updateSourceStatus() {
-    const live = state.source === "live";
-    refs.sourceDot.classList.toggle("live", live);
-    refs.sourceLabel.textContent = live ? (state.data.provider || "Live API") : "Демо-данные";
-    refs.statusTitle.textContent = live ? "Данные обновляются автоматически" : "Демо-режим интерфейса";
-    refs.statusText.textContent = live
-      ? `Счёт, таблицы и статистика синхронизированы с сервером данных${state.data.freshness ? ` · частота ${state.data.freshness}` : ""}.`
-      : "Подключите Worker и спортивный API для реальных результатов";
-    refs.lastUpdated.textContent = state.data.lastUpdated
-      ? `Обновлено ${new Intl.DateTimeFormat(config.locale || "ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(state.data.lastUpdated))}`
-      : "Время обновления неизвестно";
-    refs.timezoneLabel.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone || "Локальное время";
-  }
-
-  function renderAll() {
-    renderDateRail();
-    renderHero();
-    renderMatchList();
-    renderSideCards();
-    renderSchedule();
-    renderStandings();
-    renderStats();
-    renderFavorites();
-    updateSourceStatus();
-  }
-
-  function routeMeta(route) {
-    return {
-      home: ["Сегодня", "Чемпионат мира 2026"],
-      schedule: ["Матчи", "Расписание и результаты"],
-      standings: ["Таблицы", "Групповой этап"],
-      stats: ["Статистика", "Игроки и лидеры"],
-      favorites: ["Избранное", "Ваш персональный центр"]
-    }[route] || ["Сегодня", "Чемпионат мира 2026"];
-  }
-
-  function setRoute(route) {
-    state.route = route;
-    $$(".view").forEach((view) => view.classList.toggle("active", view.dataset.view === route));
-    $$('[data-route]').forEach((button) => button.classList.toggle("active", button.dataset.route === route));
-    const [title, eyebrow] = routeMeta(route);
-    refs.pageTitle.textContent = title;
-    refs.topEyebrow.textContent = eyebrow;
-    refs.dateRailSection.hidden = !["home", "schedule"].includes(route);
-    if (route === "favorites") renderFavorites();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function toggleFavorite(id) {
-    if (state.favorites.has(id)) {
-      state.favorites.delete(id);
-      toast("Удалено из избранного");
-    } else {
-      state.favorites.add(id);
-      toast("Добавлено в избранное");
-    }
-    localStorage.setItem("wc26:favorites", JSON.stringify([...state.favorites]));
-    renderHero();
-    renderMatchList();
-    renderSchedule();
-    renderFavorites();
-  }
-
-  function statName(key) {
-    return {
-      possession: "Владение мячом, %",
-      shots: "Удары",
-      shotsOnTarget: "Удары в створ",
-      corners: "Угловые",
-      fouls: "Фолы",
-      passes: "Передачи"
-    }[key] || key;
-  }
-
-  function renderOverviewTab(match) {
-    if (!match.events?.length) return '<div class="empty-state">События появятся после начала матча.</div>';
-    return `<div class="timeline">${match.events.map((event) => `
-      <div class="event-row"><span class="event-time">${safeNumber(event.minute)}′</span><span>${escapeHtml(event.icon)}</span><strong>${escapeHtml(event.text)}</strong></div>`).join("")}</div>`;
-  }
-
-  function renderStatsTab(match) {
-    const entries = Object.entries(match.stats || {});
-    if (!entries.length) return '<div class="empty-state">Статистика пока недоступна.</div>';
-    return `<div class="stat-bars">${entries.map(([key, values]) => {
-      const left = safeNumber(values?.[0]);
-      const right = safeNumber(values?.[1]);
-      const total = left + right || 1;
-      return `
-        <div class="stat-line">
-          <span class="stat-label">${escapeHtml(statName(key))}</span>
-          <strong>${left}</strong>
-          <span class="dual-bar"><span style="width:${left / total * 100}%"></span><span style="width:${right / total * 100}%"></span></span>
-          <strong>${right}</strong>
-        </div>`;
-    }).join("")}</div>`;
-  }
-
-  function lineupList(title, flag, players = []) {
-    return `<div class="lineup-list"><h4>${escapeHtml(flag)} ${escapeHtml(title)}</h4>${players.length
-      ? players.map((player, index) => `<div class="lineup-player"><span><small>${index + 1}</small> ${escapeHtml(player)}</span><small>${index < 1 ? "ВР" : index < 3 ? "ЗЩ" : index < 5 ? "ПЗ" : "НП"}</small></div>`).join("")
-      : '<div class="empty-state">Состав будет опубликован за 60–75 минут до игры.</div>'}</div>`;
-  }
-
-  function renderLineupsTab(match) {
-    return `<div class="lineup-grid">${lineupList(match.home.name, match.home.flag, match.lineups?.home)}${lineupList(match.away.name, match.away.flag, match.lineups?.away)}</div>`;
-  }
-
-  function renderH2HTab(match) {
-    const h2h = match.h2h || { homeWins: 0, draws: 0, awayWins: 0 };
-    return `<div class="h2h-grid">
-      <div class="h2h-stat"><strong>${safeNumber(h2h.homeWins)}</strong><small>Победы ${escapeHtml(match.home.short)}</small></div>
-      <div class="h2h-stat"><strong>${safeNumber(h2h.draws)}</strong><small>Ничьи</small></div>
-      <div class="h2h-stat"><strong>${safeNumber(h2h.awayWins)}</strong><small>Победы ${escapeHtml(match.away.short)}</small></div>
-    </div>`;
-  }
-
-  async function openMatch(id) {
-    const match = state.data.matches.find((item) => item.id === id);
-    if (!match) return;
-    state.activeMatch = match;
-    state.activeDialogTab = "overview";
-    renderMatchDialog();
-    refs.matchDialog.showModal();
-
-    if (state.source === "live" && config.apiBaseUrl && /^\d+$/.test(String(id))) {
-      try {
-        const base = config.apiBaseUrl.replace(/\/$/, "");
-        const payload = await fetchJson(`${base}/api/match?id=${encodeURIComponent(id)}`, config.requestTimeoutMs);
-        if (payload?.match) {
-          state.activeMatch = { ...match, ...payload.match };
-          const index = state.data.matches.findIndex((item) => item.id === id);
-          if (index >= 0) state.data.matches[index] = state.activeMatch;
-          renderMatchDialog();
-          renderHero();
-          renderMatchList();
-        }
-      } catch (error) {
-        console.warn("Не удалось загрузить расширенную статистику матча", error);
-      }
-    }
-  }
-
-  function renderMatchDialog() {
-    const match = state.activeMatch;
-    if (!match) return;
-    const tabContent = {
-      overview: renderOverviewTab(match),
-      stats: renderStatsTab(match),
-      lineups: renderLineupsTab(match),
-      h2h: renderH2HTab(match)
-    }[state.activeDialogTab];
-
-    refs.matchDialogContent.innerHTML = `
-      <div class="dialog-match-head">
-        <p class="eyebrow">${escapeHtml(match.stage)} · ${escapeHtml(match.venue)}</p>
-        <h2>${escapeHtml(statusLabel(match))}</h2>
-        <p class="hero-sub">${escapeHtml(formatDateTitle(dateKey(match.startingAt)))} · ${escapeHtml(formatTime(match.startingAt))}</p>
-        <div class="dialog-scoreboard">
-          <div class="dialog-team"><span class="flag-bubble">${escapeHtml(match.home.flag)}</span><strong>${escapeHtml(match.home.name)}</strong></div>
-          <div class="dialog-score">${scoreValue(match.home.score)} : ${scoreValue(match.away.score)}</div>
-          <div class="dialog-team"><span class="flag-bubble">${escapeHtml(match.away.flag)}</span><strong>${escapeHtml(match.away.name)}</strong></div>
-        </div>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="WC 26">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>World Cup 26 — Live Center</title>
+  <style>
+    :root{--bg:#07111f;--bg2:#101f36;--card:rgba(255,255,255,.12);--card2:rgba(255,255,255,.18);--text:#f7fbff;--muted:rgba(247,251,255,.68);--line:rgba(255,255,255,.18);--accent:#61f2d2;--accent2:#79a8ff;--danger:#ff6b7b;--shadow:0 24px 80px rgba(0,0,0,.35);--radius:28px;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Arial,sans-serif;color-scheme:dark}
+    [data-theme="light"]{--bg:#eef5ff;--bg2:#dceaff;--card:rgba(255,255,255,.72);--card2:rgba(255,255,255,.88);--text:#0b1220;--muted:rgba(11,18,32,.62);--line:rgba(10,20,40,.12);--accent:#00a887;--accent2:#315cff;--shadow:0 24px 70px rgba(31,75,140,.16);color-scheme:light}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 15% 10%,rgba(97,242,210,.22),transparent 34%),radial-gradient(circle at 88% 0,rgba(121,168,255,.32),transparent 36%),linear-gradient(135deg,var(--bg),var(--bg2));color:var(--text);overflow-x:hidden}.bg-orb{position:fixed;filter:blur(50px);opacity:.5;pointer-events:none}.o1{width:420px;height:420px;border-radius:999px;background:#56ffce;left:-120px;top:70px}.o2{width:520px;height:520px;border-radius:999px;background:#6f7dff;right:-170px;top:140px}.shell{display:grid;grid-template-columns:280px 1fr;gap:22px;max-width:1480px;margin:0 auto;padding:22px}.glass{background:linear-gradient(145deg,var(--card2),var(--card));border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(28px) saturate(1.25);-webkit-backdrop-filter:blur(28px) saturate(1.25);border-radius:var(--radius)}.side{position:sticky;top:22px;height:calc(100vh - 44px);padding:18px;display:flex;flex-direction:column;gap:18px}.brand{display:flex;gap:12px;align-items:center;padding:12px;border-radius:22px;background:rgba(255,255,255,.1)}.logo{width:48px;height:48px;border-radius:16px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}.brand strong{display:block;font-size:18px}.brand small{color:var(--muted)}.nav{display:grid;gap:9px}.nav button,.theme,.pill,.match,.datechip{border:0;color:var(--text);background:transparent;font:inherit}.nav button{display:flex;gap:10px;align-items:center;width:100%;padding:13px 14px;border-radius:18px;color:var(--muted);cursor:pointer}.nav button.active,.nav button:hover{background:rgba(255,255,255,.14);color:var(--text)}.side-bottom{margin-top:auto;display:grid;gap:10px}.theme{cursor:pointer;text-align:left;padding:14px;border-radius:18px;background:rgba(255,255,255,.12)}.source{font-size:12px;color:var(--muted);padding:0 6px}.main{min-width:0}.top{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:18px;padding:18px 20px}.kicker{color:var(--accent);font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:12px}.title{font-size:clamp(30px,5vw,66px);line-height:.94;margin:8px 0 10px}.subtitle{max-width:780px;color:var(--muted);font-size:17px;line-height:1.45}.hero{padding:26px;margin-bottom:18px;position:relative;overflow:hidden}.hero:after{content:"";position:absolute;inset:auto -60px -120px auto;width:320px;height:320px;border-radius:999px;background:rgba(97,242,210,.18);filter:blur(25px)}.grid{display:grid;gap:18px}.cols{grid-template-columns:1.35fr .85fr}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.stat{padding:18px}.stat b{font-size:30px;display:block}.stat span{color:var(--muted)}.panel{padding:20px}.panel h2{margin:0 0 14px;font-size:22px}.toolbar{display:flex;gap:10px;overflow:auto;padding-bottom:8px}.datechip{white-space:nowrap;padding:10px 13px;border-radius:999px;background:rgba(255,255,255,.1);cursor:pointer;color:var(--muted)}.datechip.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#06111c;font-weight:800}.match-list{display:grid;gap:12px}.match{width:100%;text-align:left;display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;padding:14px;border-radius:22px;background:rgba(255,255,255,.1);border:1px solid var(--line);cursor:pointer}.team{display:flex;align-items:center;gap:10px;min-width:0}.team.away{justify-content:flex-end;text-align:right}.flag{width:34px;height:24px;border-radius:6px;object-fit:cover;background:rgba(255,255,255,.2);box-shadow:0 0 0 1px var(--line)}.fallback-flag{width:34px;height:24px;border-radius:6px;display:grid;place-items:center;background:rgba(255,255,255,.16);font-size:18px}.team-name{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.scorebox{text-align:center;min-width:94px}.score{font-size:26px;font-weight:900}.meta{font-size:12px;color:var(--muted);margin-top:2px}.live{color:#06111c;background:var(--accent);padding:3px 8px;border-radius:999px;font-size:11px;font-weight:900}.table-wrap{overflow:auto}.standings{width:100%;border-collapse:collapse;min-width:620px}.standings th,.standings td{padding:11px 8px;border-bottom:1px solid var(--line);font-size:14px}.standings th{text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.leaders{display:grid;gap:10px}.player{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:11px;border-radius:18px;background:rgba(255,255,255,.1)}.avatar{width:46px;height:46px;border-radius:999px;object-fit:cover;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-weight:900;color:#07111f}.player small{display:block;color:var(--muted)}.value{font-size:22px;font-weight:900}.empty{color:var(--muted);padding:28px;text-align:center}.bottom-nav{display:none}.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;padding:20px;z-index:20}.modal.show{display:flex}.sheet{width:min(900px,100%);max-height:88vh;overflow:auto;padding:20px;border-radius:30px}.sheet-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.close{border:0;background:rgba(255,255,255,.12);color:var(--text);width:40px;height:40px;border-radius:14px;font-size:22px;cursor:pointer}.tabs{display:flex;gap:8px;margin:16px 0;overflow:auto}.tabs button{border:0;padding:10px 12px;border-radius:999px;background:rgba(255,255,255,.1);color:var(--muted);cursor:pointer}.tabs button.active{background:var(--text);color:var(--bg);font-weight:800}.split{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mini-card{padding:14px;border-radius:20px;background:rgba(255,255,255,.09);border:1px solid var(--line)}.err{background:rgba(255,107,123,.14);border:1px solid rgba(255,107,123,.34);padding:12px;border-radius:18px;color:var(--text);margin-top:12px}.loader{display:inline-block;width:12px;height:12px;border-radius:999px;background:var(--accent);box-shadow:0 0 0 0 rgba(97,242,210,.5);animation:pulse 1.2s infinite}@keyframes pulse{to{box-shadow:0 0 0 12px transparent}}@media (max-width:980px){.shell{grid-template-columns:1fr;padding:12px 12px 88px}.side{display:none}.cols{grid-template-columns:1fr}.cards{grid-template-columns:1fr 1fr}.top{position:sticky;top:8px;z-index:10}.bottom-nav{display:flex;position:fixed;left:12px;right:12px;bottom:12px;z-index:15;padding:8px;border-radius:26px;justify-content:space-around}.bottom-nav button{border:0;background:transparent;color:var(--muted);font:inherit;padding:10px;border-radius:18px}.bottom-nav button.active{background:rgba(255,255,255,.16);color:var(--text)}.match{grid-template-columns:1fr;}.team.away{justify-content:flex-start;text-align:left}.scorebox{text-align:left}.split{grid-template-columns:1fr}}@media (max-width:560px){.cards{grid-template-columns:1fr}.hero,.panel{padding:16px}.title{font-size:38px}.top{padding:12px}.subtitle{font-size:15px}}
+  </style>
+</head>
+<body>
+  <div class="bg-orb o1"></div><div class="bg-orb o2"></div>
+  <div class="shell">
+    <aside class="side glass">
+      <div class="brand"><div class="logo">⚽</div><div><strong>World Cup 26</strong><small>Live Center</small></div></div>
+      <nav class="nav" id="sideNav"></nav>
+      <div class="side-bottom"><button class="theme" id="themeBtn">◐ Сменить тему</button><div class="source" id="source">Подключение…</div></div>
+    </aside>
+    <main class="main">
+      <header class="top glass"><div><b>FIFA World Cup 2026</b><div class="meta" id="clock"></div></div><button class="theme" id="refreshBtn">Обновить</button></header>
+      <section class="hero glass"><div class="kicker">Apple-style unofficial center</div><h1 class="title">ЧМ-2026<br>в реальном времени</h1><p class="subtitle">Расписание, счёт, таблицы, флаги сборных и фотографии игроков через твой Cloudflare Worker API-Football. Безопасно для GitHub Pages: ключ остаётся только в Cloudflare.</p><div id="errorBox"></div></section>
+      <section class="cards" id="statsCards"></section>
+      <div class="grid cols" style="margin-top:18px">
+        <section class="panel glass" id="mainPanel"></section>
+        <aside class="panel glass" id="sidePanel"></aside>
       </div>
-      <div class="dialog-tabs" role="tablist">
-        <button class="dialog-tab ${state.activeDialogTab === "overview" ? "active" : ""}" type="button" data-dialog-tab="overview">События</button>
-        <button class="dialog-tab ${state.activeDialogTab === "stats" ? "active" : ""}" type="button" data-dialog-tab="stats">Статистика</button>
-        <button class="dialog-tab ${state.activeDialogTab === "lineups" ? "active" : ""}" type="button" data-dialog-tab="lineups">Составы</button>
-        <button class="dialog-tab ${state.activeDialogTab === "h2h" ? "active" : ""}" type="button" data-dialog-tab="h2h">Личные встречи</button>
-      </div>
-      <div class="dialog-body">${tabContent}</div>`;
-  }
-
-  async function fetchJson(url, timeoutMs = 9000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  async function loadData({ silent = false } = {}) {
-    if (!silent) refs.refreshButton.classList.add("loading");
-    try {
-      if (config.mode === "live" && config.apiBaseUrl) {
-        const base = config.apiBaseUrl.replace(/\/$/, "");
-        const snapshot = await fetchJson(`${base}/api/snapshot?date=${encodeURIComponent(state.selectedDate || dateKey(new Date()))}`, config.requestTimeoutMs);
-        if (!snapshot?.matches || !Array.isArray(snapshot.matches)) throw new Error("Некорректный формат live API");
-        state.data = {
-          ...demoData,
-          ...snapshot,
-          leaders: { ...demoData.leaders, ...(snapshot.leaders || {}) }
-        };
-        state.source = "live";
-        state.lastError = null;
-      } else {
-        state.data = typeof structuredClone === "function" ? structuredClone(demoData) : JSON.parse(JSON.stringify(demoData));
-        state.source = "demo";
-      }
-      if (!state.selectedDate) state.selectedDate = pickInitialDate();
-      renderAll();
-      if (!silent) toast(state.source === "live" ? "Live-данные обновлены" : "Демо-данные обновлены");
-    } catch (error) {
-      console.error(error);
-      state.lastError = error;
-      state.data = demoData;
-      state.source = "demo";
-      if (!state.selectedDate) state.selectedDate = pickInitialDate();
-      renderAll();
-      toast("Live API недоступен — включён демо-режим");
-    } finally {
-      refs.refreshButton.classList.remove("loading");
-    }
-  }
-
-  function bindEvents() {
-    document.addEventListener("click", (event) => {
-      const routeButton = event.target.closest("[data-route]");
-      if (routeButton) {
-        event.preventDefault();
-        setRoute(routeButton.dataset.route);
-        return;
-      }
-
-      const dateButton = event.target.closest("[data-date]");
-      if (dateButton) {
-        state.selectedDate = dateButton.dataset.date;
-        renderDateRail();
-        renderHero();
-        renderMatchList();
-        return;
-      }
-
-      const favoriteButton = event.target.closest("[data-favorite]");
-      if (favoriteButton) {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleFavorite(favoriteButton.dataset.favorite);
-        return;
-      }
-
-      const matchButton = event.target.closest("[data-open-match]");
-      if (matchButton) {
-        openMatch(matchButton.dataset.openMatch);
-        return;
-      }
-
-      const filterButton = event.target.closest("[data-filter]");
-      if (filterButton) {
-        state.scheduleFilter = filterButton.dataset.filter;
-        $$("[data-filter]").forEach((button) => button.classList.toggle("active", button === filterButton));
-        renderSchedule();
-        return;
-      }
-
-      const tabButton = event.target.closest("[data-dialog-tab]");
-      if (tabButton) {
-        state.activeDialogTab = tabButton.dataset.dialogTab;
-        renderMatchDialog();
-      }
-
-      if (event.target.closest("[data-close-about]")) refs.aboutDialog.close();
-    });
-
-    document.addEventListener("keydown", (event) => {
-      if ((event.key === "Enter" || event.key === " ") && event.target.matches(".match-card")) {
-        event.preventDefault();
-        openMatch(event.target.dataset.openMatch);
-      }
-    });
-
-    $("#todayButton").addEventListener("click", () => {
-      const today = dateKey(new Date());
-      state.selectedDate = matchesForDate(today).length ? today : pickInitialDate();
-      renderDateRail();
-      renderHero();
-      renderMatchList();
-    });
-
-    $("#datePrev").addEventListener("click", () => refs.dateRail.scrollBy({ left: -360, behavior: "smooth" }));
-    $("#dateNext").addEventListener("click", () => refs.dateRail.scrollBy({ left: 360, behavior: "smooth" }));
-    refs.refreshButton.addEventListener("click", () => loadData());
-    refs.themeButton.addEventListener("click", cycleTheme);
-    $("#mobileThemeButton")?.addEventListener("click", cycleTheme);
-    $("#dialogClose").addEventListener("click", () => refs.matchDialog.close());
-    $("#profileButton").addEventListener("click", () => refs.aboutDialog.showModal());
-
-    refs.matchDialog.addEventListener("click", (event) => {
-      const rect = refs.matchDialog.getBoundingClientRect();
-      const outside = event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
-      if (outside) refs.matchDialog.close();
-    });
-
-    window.addEventListener("beforeinstallprompt", (event) => {
-      event.preventDefault();
-      state.deferredInstallPrompt = event;
-      refs.installButton.hidden = false;
-    });
-
-    refs.installButton.addEventListener("click", async () => {
-      if (state.deferredInstallPrompt) {
-        state.deferredInstallPrompt.prompt();
-        await state.deferredInstallPrompt.userChoice;
-        state.deferredInstallPrompt = null;
-        refs.installButton.hidden = true;
-      } else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
-        toast("В Safari нажмите «Поделиться» → «На экран Домой»");
-      } else {
-        toast("Откройте меню браузера и выберите «Установить приложение»");
-      }
-    });
-
-    if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone) refs.installButton.hidden = false;
-  }
-
-  function setupPwa() {
-    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(console.warn));
-    }
-  }
-
-  function startAutoRefresh() {
-    if (config.mode !== "live") return;
-    setInterval(() => loadData({ silent: true }), Math.max(10000, config.refreshIntervalMs || 15000));
-  }
-
-  async function init() {
-    applyTheme();
-    bindEvents();
-    setupPwa();
-    await loadData({ silent: true });
-    setRoute("home");
-    startAutoRefresh();
-  }
-
-  init();
+    </main>
+  </div>
+  <nav class="bottom-nav glass" id="bottomNav"></nav>
+  <div class="modal" id="modal"><div class="sheet glass"><div class="sheet-head"><h2 id="modalTitle">Матч</h2><button class="close" id="closeModal">×</button></div><div id="modalContent"></div></div></div>
+<script>
+(function(){
+'use strict';
+const WORKER='https://wc26-live-api.efim26470.workers.dev';
+const FLAG_ROOT='https://flagcdn.com/w80';
+const STORE_THEME='wc26-clean-theme';
+const routes=[['home','Сегодня'],['schedule','Матчи'],['standings','Таблицы'],['stats','Игроки'],['favorites','Избранное']];
+const state={route:'home',data:null,loading:true,error:null,selectedDate:null,favs:new Set(JSON.parse(localStorage.getItem('wc26-favs')||'[]')),theme:localStorage.getItem(STORE_THEME)||'dark',activeMatch:null};
+const fallback={source:'demo',provider:'Демо-данные',lastUpdated:new Date().toISOString(),matches:[{id:'demo1',date:'2026-06-11T19:00:00Z',group:'Group A',status:'upcoming',home:{name:'Mexico',code:'MEX',flag:'mx'},away:{name:'South Africa',code:'RSA',flag:'za'},score:{home:null,away:null}},{id:'demo2',date:'2026-06-12T01:00:00Z',group:'Group D',status:'upcoming',home:{name:'United States',code:'USA',flag:'us'},away:{name:'Paraguay',code:'PAR',flag:'py'},score:{home:null,away:null}},{id:'demo3',date:'2026-06-13T22:00:00Z',group:'Group C',status:'upcoming',home:{name:'Brazil',code:'BRA',flag:'br'},away:{name:'Morocco',code:'MAR',flag:'ma'},score:{home:null,away:null}}],standings:[],leaders:{goals:[{name:'Kylian Mbappé',team:'France',teamCode:'FRA',photo:'',value:0},{name:'Lionel Messi',team:'Argentina',teamCode:'ARG',photo:'',value:0}],assists:[{name:'Kevin De Bruyne',team:'Belgium',teamCode:'BEL',photo:'',value:0}]}};
+const codeMap={ARG:'ar',DZA:'dz',ALG:'dz',AUT:'at',JOR:'jo',GHA:'gh',PAN:'pa',ENG:'gb-eng',CRO:'hr',POR:'pt',COD:'cd',DRC:'cd',UZB:'uz',COL:'co',CZE:'cz',RSA:'za',SUI:'ch',KOR:'kr',USA:'us',AUS:'au',MEX:'mx',CAN:'ca',BIH:'ba',QAT:'qa',BRA:'br',FRA:'fr',GER:'de',DEU:'de',ESP:'es',NOR:'no',MAR:'ma',SEN:'sn',BEL:'be',EGY:'eg',URU:'uy',NZL:'nz',JPN:'jp',TUN:'tn',ECU:'ec',IRI:'ir',IRN:'ir',KSA:'sa',CIV:'ci',CPV:'cv',PAR:'py',SCO:'gb-sct',HTI:'ht',CUW:'cw',TUR:'tr',NED:'nl',SWE:'se',IRQ:'iq'};
+const nameMap={'Argentina':'ar','Algeria':'dz','Austria':'at','Jordan':'jo','Ghana':'gh','Panama':'pa','England':'gb-eng','Croatia':'hr','Portugal':'pt','DR Congo':'cd','Congo DR':'cd','Uzbekistan':'uz','Colombia':'co','Czechia':'cz','Czech Republic':'cz','South Africa':'za','Switzerland':'ch','South Korea':'kr','Korea Republic':'kr','United States':'us','USA':'us','Australia':'au','Mexico':'mx','Canada':'ca','Bosnia and Herzegovina':'ba','Bosnia & Herzegovina':'ba','Qatar':'qa','Brazil':'br','France':'fr','Germany':'de','Spain':'es','Norway':'no','Morocco':'ma','Senegal':'sn','Belgium':'be','Egypt':'eg','Uruguay':'uy','New Zealand':'nz','Japan':'jp','Tunisia':'tn','Ecuador':'ec','Iran':'ir','Saudi Arabia':'sa','Ivory Coast':'ci','Côte d Ivoire':'ci','Cape Verde':'cv','Paraguay':'py','Scotland':'gb-sct','Haiti':'ht','Curacao':'cw','Curaçao':'cw','Turkey':'tr','Netherlands':'nl','Sweden':'se','Iraq':'iq'};
+function $(s,r=document){return r.querySelector(s)} function $$(s,r=document){return Array.from(r.querySelectorAll(s))}
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function fmtDate(iso,opts={}){try{return new Intl.DateTimeFormat('ru-RU',opts).format(new Date(iso))}catch{return '—'}}
+function fmtTime(iso){try{return new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}catch{return '—'}}
+function flagCode(team){return team?.flag||codeMap[(team?.code||'').toUpperCase()]||nameMap[team?.name]||''}
+function flag(team){const c=flagCode(team);return c?`<img class="flag" src="${FLAG_ROOT}/${esc(c)}.png" alt="">`:`<span class="fallback-flag">🏳️</span>`}
+function avatar(p){if(p?.photo)return `<img class="avatar" src="${esc(p.photo)}" alt="">`; const initials=(p?.name||'?').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();return `<div class="avatar">${esc(initials)}</div>`}
+function score(m){const h=m?.score?.home, a=m?.score?.away; return h==null||a==null?'–':`${h}:${a}`}
+function statusLabel(m){if(m.status==='live')return '<span class="live">LIVE</span>'; if(m.status==='finished')return 'Завершён'; return fmtTime(m.date)}
+function groupByDate(matches){return matches.reduce((acc,m)=>{const k=fmtDate(m.date,{day:'2-digit',month:'long',year:'numeric'});(acc[k]||(acc[k]=[])).push(m);return acc},{})}
+function normalizeData(raw){const d=raw||fallback; d.matches=(d.matches||[]).map(m=>({id:String(m.id||m.fixtureId||Math.random()),date:m.date||m.kickoff||new Date().toISOString(),group:m.group||m.round||'',status:m.status||'upcoming',home:m.home||m.teams?.home||{},away:m.away||m.teams?.away||{},score:m.score||{home:m.homeScore,away:m.awayScore},events:m.events||[],stats:m.stats||[],lineups:m.lineups||[],h2h:m.h2h||[]})); d.leaders=d.leaders||{}; d.standings=d.standings||[]; return d}
+async function clearOldCaches(){try{if('serviceWorker' in navigator){const regs=await navigator.serviceWorker.getRegistrations(); for(const r of regs) await r.unregister()} if(window.caches){const keys=await caches.keys(); for(const k of keys) if(k.includes('wc26')||k.includes('worldcup')) await caches.delete(k)}}catch(e){}}
+async function load(){state.loading=true; render(); try{const res=await fetch(WORKER+'/api/snapshot',{cache:'no-store'}); if(!res.ok) throw new Error('Worker ответил '+res.status); state.data=normalizeData(await res.json()); state.error=null}catch(e){state.data=normalizeData(fallback); state.error='Live-API временно недоступен, включён демо-режим. Деталь: '+e.message} finally{state.loading=false; render()}}
+function setRoute(r){state.route=r; render()} function saveFavs(){localStorage.setItem('wc26-favs',JSON.stringify([...state.favs]))}
+function initNav(){const html=routes.map(([id,label])=>`<button data-route="${id}">${label}</button>`).join(''); $('#sideNav').innerHTML=html; $('#bottomNav').innerHTML=html; $$('#sideNav button,#bottomNav button').forEach(b=>b.onclick=()=>setRoute(b.dataset.route));}
+function applyTheme(){document.documentElement.dataset.theme=state.theme==='light'?'light':'dark'}
+function render(){applyTheme(); const d=state.data||fallback; const matches=d.matches||[]; $('#clock').textContent=new Intl.DateTimeFormat('ru-RU',{dateStyle:'full',timeStyle:'short'}).format(new Date()); $('#source').innerHTML=state.loading?'<span class="loader"></span> Загрузка live-данных…':`${esc(d.provider||d.source||'API')} · ${fmtDate(d.lastUpdated,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`; $('#errorBox').innerHTML=state.error?`<div class="err">${esc(state.error)}</div>`:''; $$('#sideNav button,#bottomNav button').forEach(b=>b.classList.toggle('active',b.dataset.route===state.route)); const live=matches.filter(m=>m.status==='live').length, done=matches.filter(m=>m.status==='finished').length, upcoming=matches.filter(m=>m.status!=='finished').length; $('#statsCards').innerHTML=`<div class="stat glass"><b>${matches.length}</b><span>Матчей в базе</span></div><div class="stat glass"><b>${live}</b><span>Сейчас live</span></div><div class="stat glass"><b>${done}</b><span>Завершено</span></div>`; if(state.loading){$('#mainPanel').innerHTML='<h2>Загрузка</h2><div class="empty"><span class="loader"></span><br>Получаю данные из Worker…</div>'; $('#sidePanel').innerHTML='<h2>Игроки</h2><div class="empty">Скоро появится статистика</div>'; return} renderMain(d); renderSide(d)}
+function renderMain(d){const m=d.matches||[]; if(state.route==='standings') return renderStandings(d); if(state.route==='stats') return renderStats(d); if(state.route==='favorites') return renderFavorites(d); if(state.route==='schedule') return renderSchedule(d,m); return renderHome(d,m)}
+function renderHome(d,matches){const today=new Date().toDateString(); let list=matches.filter(m=>new Date(m.date).toDateString()===today); if(!list.length) list=matches.filter(m=>m.status==='live').concat(matches.filter(m=>m.status!=='finished').slice(0,5)); if(!list.length) list=matches.slice(0,6); $('#mainPanel').innerHTML=`<h2>Сегодня и ближайшие матчи</h2>${matchList(list)}`; bindMatches()}
+function renderSchedule(d,matches){const dates=[...new Set(matches.map(m=>fmtDate(m.date,{day:'2-digit',month:'short'})))].slice(0,20); $('#mainPanel').innerHTML=`<h2>Расписание</h2><div class="toolbar">${dates.map(x=>`<button class="datechip">${esc(x)}</button>`).join('')}</div>`+Object.entries(groupByDate(matches)).map(([day,items])=>`<h3>${esc(day)}</h3>${matchList(items)}`).join(''); bindMatches()}
+function matchList(items){if(!items.length)return '<div class="empty">Матчей пока нет</div>';return `<div class="match-list">${items.map(m=>`<button class="match" data-match="${esc(m.id)}"><div class="team">${flag(m.home)}<span class="team-name">${esc(m.home?.name||'Команда')}</span></div><div class="scorebox"><div class="score">${esc(score(m))}</div><div class="meta">${statusLabel(m)} · ${esc(m.group||'')}</div></div><div class="team away"><span class="team-name">${esc(m.away?.name||'Команда')}</span>${flag(m.away)}</div></button>`).join('')}</div>`}
+function renderStandings(d){let groups=d.standings||[]; if(!groups.length){$('#mainPanel').innerHTML='<h2>Таблицы групп</h2><div class="empty">API пока не вернул таблицы. Они появятся после начала турнира.</div>';return} $('#mainPanel').innerHTML='<h2>Таблицы групп</h2>'+groups.map(g=>`<h3>${esc(g.group||g.name||'Группа')}</h3><div class="table-wrap"><table class="standings"><thead><tr><th>Команда</th><th>И</th><th>В</th><th>Н</th><th>П</th><th>М</th><th>О</th></tr></thead><tbody>${(g.teams||g.rows||[]).map(t=>`<tr><td><span class="team">${flag(t.team||t)}<b>${esc(t.name||t.team?.name||'')}</b></span></td><td>${t.played||t.all?.played||0}</td><td>${t.win||t.all?.win||0}</td><td>${t.draw||t.all?.draw||0}</td><td>${t.lose||t.all?.lose||0}</td><td>${esc(t.goals||((t.all?.goals?.for||0)+':'+(t.all?.goals?.against||0)))}</td><td><b>${t.points||0}</b></td></tr>`).join('')}</tbody></table></div>`).join('')}
+function renderStats(d){const goals=d.leaders?.goals||d.leaders?.scorers||[]; const assists=d.leaders?.assists||[]; $('#mainPanel').innerHTML=`<h2>Игроки</h2><h3>Голы</h3><div class="leaders">${players(goals,'голов')}</div><h3>Ассисты</h3><div class="leaders">${players(assists,'ассистов')}</div>`}
+function players(list,label){if(!list.length)return '<div class="empty">Данных пока нет</div>';return list.slice(0,12).map(p=>`<div class="player">${avatar(p)}<div><b>${esc(p.name||p.player?.name)}</b><small>${flag({name:p.team,code:p.teamCode})} ${esc(p.team||p.statistics?.[0]?.team?.name||'')}</small></div><div class="value">${esc(p.value||p.goals||p.total||0)}</div></div>`).join('')}
+function renderFavorites(d){const list=(d.matches||[]).filter(m=>state.favs.has(m.id)); $('#mainPanel').innerHTML='<h2>Избранное</h2>'+matchList(list); bindMatches()}
+function renderSide(d){const upcoming=(d.matches||[]).filter(m=>m.status!=='finished').slice(0,4); $('#sidePanel').innerHTML=`<h2>Ближайшее</h2>${matchList(upcoming)}<hr style="border:0;border-top:1px solid var(--line);margin:16px 0"><h2>Топ игроков</h2><div class="leaders">${players((d.leaders?.goals||[]).slice(0,5),'голов')}</div>`; bindMatches($('#sidePanel'))}
+function bindMatches(root=document){$$('.match',root).forEach(b=>b.onclick=()=>openMatch(b.dataset.match))}
+async function openMatch(id){let m=(state.data?.matches||[]).find(x=>x.id===id); state.activeMatch=m; $('#modal').classList.add('show'); $('#modalTitle').textContent=(m?.home?.name||'Матч')+' — '+(m?.away?.name||''); $('#modalContent').innerHTML='<div class="empty"><span class="loader"></span><br>Загрузка подробностей…</div>'; try{const res=await fetch(WORKER+'/api/match?id='+encodeURIComponent(id),{cache:'no-store'}); if(res.ok){const payload=await res.json(); if(payload.match)m=payload.match}}catch(e){} renderModal(m)}
+function renderModal(m){if(!m){$('#modalContent').innerHTML='<div class="empty">Матч не найден</div>';return} $('#modalTitle').textContent=`${m.home?.name||''} — ${m.away?.name||''}`; const events=m.events||[]; const stats=m.stats||[]; const lineups=m.lineups||[]; $('#modalContent').innerHTML=`<div class="match" style="cursor:default"><div class="team">${flag(m.home)}<b>${esc(m.home?.name)}</b></div><div class="scorebox"><div class="score">${esc(score(m))}</div><div class="meta">${statusLabel(m)}</div></div><div class="team away"><b>${esc(m.away?.name)}</b>${flag(m.away)}</div></div><div class="split" style="margin-top:12px"><div class="mini-card"><h3>События</h3>${events.length?events.map(e=>`<p><b>${esc(e.time||e.minute||'')}</b> ${esc(e.type||'')} — ${esc(e.player?.name||e.player||'')}</p>`).join(''):'<p class="meta">Пока нет событий</p>'}</div><div class="mini-card"><h3>Статистика</h3>${stats.length?stats.map(s=>`<p>${esc(s.type||s.name)}: <b>${esc(s.home??s.value??'')}</b> / <b>${esc(s.away??'')}</b></p>`).join(''):'<p class="meta">Статистика появится во время матча</p>'}</div></div><div class="mini-card" style="margin-top:12px"><h3>Составы и оценки игроков</h3>${lineups.length?lineups.map(l=>`<p><b>${esc(l.team?.name||l.team||'')}</b></p>`).join(''):'<p class="meta">Данные составов появятся ближе к старту матча.</p>'}</div>`}
+$('#closeModal').onclick=()=>$('#modal').classList.remove('show'); $('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('show')}; $('#refreshBtn').onclick=load; $('#themeBtn').onclick=()=>{state.theme=state.theme==='light'?'dark':'light';localStorage.setItem(STORE_THEME,state.theme);render()}; initNav(); clearOldCaches(); load(); setInterval(()=>$('#clock').textContent=new Intl.DateTimeFormat('ru-RU',{dateStyle:'full',timeStyle:'short'}).format(new Date()),30000); setInterval(load,5*60*1000);
 })();
+</script>
+</body>
+</html>
