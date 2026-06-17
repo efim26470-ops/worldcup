@@ -1,14 +1,15 @@
 {
   "name": "World Cup 26 — Live Center",
   "short_name": "World Cup 26",
-  "description": "Live-центр чемпионата мира по футболу 2026",
+  "description": "Live-центр чемпионата мира по футболу 2026: матчи, сборные, составы и статистика",
   "start_url": "./#today",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#071522",
   "theme_color": "#071522",
   "lang": "ru",
+  "categories": ["sports", "news", "entertainment"],
   "icons": [
     { "src": "./assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "./assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
@@ -16,6 +17,7 @@
   "shortcuts": [
     { "name": "Матчи сегодня", "short_name": "Сегодня", "url": "./#today" },
     { "name": "Расписание", "short_name": "Матчи", "url": "./#schedule" },
-    { "name": "Таблицы", "short_name": "Таблицы", "url": "./#standings" }
+    { "name": "Сборные", "short_name": "Сборные", "url": "./#teams" },
+    { "name": "Избранное", "short_name": "Избранное", "url": "./#favorites" }
   ]
 }
